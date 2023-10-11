@@ -32,6 +32,10 @@ module FloatingPointAdd#(
     logic[exp_width:0] result_exp;
     logic result_sign;
 
+    logic is_op_big_zero, is_op_small_zero;
+    logic is_op_big_nan, is_op_small_nan;
+    logic is_op_big_inf, is_op_small_inf;
+
     logic is_overflow, is_underflow, is_inexact;
 
     always_comb begin
@@ -47,8 +51,19 @@ module FloatingPointAdd#(
         op_big_exp = op_big[exp_width+frac_width-1:frac_width];
         op_small_exp = op_small[exp_width+frac_width-1:frac_width];
 
-        op_big_manti = {3'b001, op_big[frac_width-1:0], 3'b000};
-        op_small_manti = {3'b001, op_small[frac_width-1:0], 3'b000} >> (op_big_exp - op_small_exp);
+        op_big_manti = {2'b00, op_big_exp != exp_width'(0), op_big[frac_width-1:0], 3'b000} << (op_big_exp == exp_width'(0));
+        if(op_big_exp - op_small_exp < frac_width+2)begin
+            op_small_manti = ({2'b00, op_small_exp != exp_width'(0), op_small[frac_width-1:0], 3'b000} << (op_small_exp == exp_width'(0))) >> (op_big_exp - op_small_exp);
+        end else begin
+            op_small_manti = (frac_width+6)'(1);
+        end
+
+        is_op_big_zero = op_big_exp == exp_width'(0) && (~|op_big[frac_width-1:0]);
+        is_op_small_zero = op_small_exp == exp_width'(0) && (~|op_small[frac_width-1:0]);
+        is_op_big_inf = op_big_exp == ~exp_width'(0) && (~|op_big[frac_width-1:0]);
+        is_op_small_inf = op_small_exp == ~exp_width'(0) && (~|op_small[frac_width-1:0]);
+        is_op_big_nan = op_big_exp == ~exp_width'(0) && (|op_big[frac_width-1:0]);
+        is_op_small_nan = op_small_exp == ~exp_width'(0) && (|op_small[frac_width-1:0]);
 
         added_manti = (op_big_sign ? -op_big_manti : op_big_manti) + (op_small_sign ? -op_small_manti : op_small_manti);
         result_sign = added_manti[frac_width+5];
@@ -57,7 +72,7 @@ module FloatingPointAdd#(
     end
 
     for(genvar s = shifter_stages-1; s >= 0; s = s - 1) begin: barrel_shifter
-        assign norm_shift[s] = |norm_manti[s+1][frac_width+4:frac_width+5-(2**s)];
+        assign norm_shift[s] = ~|norm_manti[s+1][frac_width+4:frac_width+5-(2**s)];
         assign norm_manti[s] = norm_shift[s] ? (norm_manti[s+1] << 2**s) : norm_manti[s+1];
     end
     
@@ -73,13 +88,22 @@ module FloatingPointAdd#(
     );
 
     always_comb begin
-        result_exp = op_big_exp - exp_width'(norm_shift) + exp_width'(unsigned'(round_carry+1'b1));
+        result_exp = op_big_exp + exp_width'(unsigned'(round_carry+2'b01)) - exp_width'(norm_shift);
 
-        is_overflow = result_exp[exp_width];
-        is_underflow = result_exp[exp_width];
+        is_underflow = (op_big_exp + exp_width'(unsigned'(round_carry+2'b01))) < exp_width'(norm_shift);
+        is_overflow = ~is_underflow & result_exp[exp_width];
         is_inexact = |{norm_manti[0][2:0]};
 
-        result = {result_sign, result_exp[exp_width-1:0], round_frac};
+        if(is_op_big_nan) result = op_big; // NAN propagation
+        else if(is_op_small_nan) result = op_small; // NAN propagation
+        else if(~|added_manti) begin // +-zero
+            unique case(round_mode)
+                `FP_ROUND_DOWNWARD: result = {op_big_sign | op_small_sign, exp_width'(0), frac_width'(0)};
+                default: result = {op_big_sign & op_small_sign, exp_width'(0), frac_width'(0)};
+            endcase
+        end
+        else if(is_op_big_inf | is_op_small_inf | is_overflow) result = {result_sign, ~exp_width'(0), frac_width'(0)}; // +-inf
+        else result = {result_sign, result_exp[exp_width-1:0], round_frac};
 
         exception = (5'(is_overflow) << `FP_OVERFLOW) | (5'(is_underflow) << `FP_UNDERFLOW) | (5'(is_inexact) << `FP_INEXACT);
     end

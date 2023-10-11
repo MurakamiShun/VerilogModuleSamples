@@ -45,15 +45,15 @@ module FloatingPointMul#(
         op1_frac = op1[frac_width-1:0];
         op2_frac = op2[frac_width-1:0];
 
-        is_op1_zero = op1_exp == {exp_width{1'b0}} && (~|op1_frac); // regard denormal number as zero
-        is_op2_zero = op2_exp == {exp_width{1'b0}} && (~|op2_frac); // regard denormal number as zero
-        is_op1_inf = op1_exp == {exp_width{1'b1}} && (~|op1_frac);
-        is_op2_inf = op2_exp == {exp_width{1'b1}} && (~|op2_frac);
-        is_op1_nan = op1_exp == {exp_width{1'b1}} && (|op1_frac);
-        is_op2_nan = op2_exp == {exp_width{1'b1}} && (|op2_frac);
+        is_op1_zero = op1_exp == exp_width'(0) && (~|op1_frac);
+        is_op2_zero = op2_exp == exp_width'(0) && (~|op2_frac);
+        is_op1_inf = op1_exp == ~exp_width'(0) && (~|op1_frac);
+        is_op2_inf = op2_exp == ~exp_width'(0) && (~|op2_frac);
+        is_op1_nan = op1_exp == ~exp_width'(0) && (|op1_frac);
+        is_op2_nan = op2_exp == ~exp_width'(0) && (|op2_frac);
 
         result_sign = op1_sign ^ op2_sign;
-        mul_mant = {op1_exp != {exp_width{1'b0}}, op1_frac} * {op2_exp != {exp_width{1'b0}}, op2_frac};
+        mul_mant = {op1_exp != exp_width'(0), op1_frac} * {op2_exp != exp_width'(0), op2_frac};
 
         unique case(mul_mant[mul_mant_width-1])
             1'b1: norm_mul_frac = {mul_mant[mul_mant_width-2:mul_mant_width-frac_width-3], |mul_mant[mul_mant_width-frac_width-4:0]};
@@ -75,7 +75,7 @@ module FloatingPointMul#(
     );
 
     always_comb begin
-        result_biased_exp = op1_exp + op2_exp + (exp_width+1)'(unsigned'(round_carry + mul_carry));
+        result_biased_exp = op1_exp + op2_exp + exp_width'(unsigned'(round_carry + mul_carry));
         
         is_overflow = result_biased_exp > (exp_bias*3);
         is_underflow = exp_bias > result_biased_exp;
@@ -85,9 +85,13 @@ module FloatingPointMul#(
 
         if(is_op1_nan) result = op1; // NAN propagation
         else if(is_op2_nan) result = op2; // NAN propagation
-        else if(is_op1_inf & is_op2_zero | is_op1_zero & is_op2_inf) result = {1'b1, {exp_width{1'b1}}, 1'b1, {(frac_width-1){1'b0}}}; // -nan
-        else if(is_op1_zero | is_op2_zero | is_underflow) result = {result_sign, {exp_width{1'b0}}, {frac_width{1'b0}}}; // +-zero
-        else if(is_op1_inf | is_op2_inf | is_overflow) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
+        else if(is_op1_inf & is_op2_zero | is_op1_zero & is_op2_inf) result = {1'b1, ~exp_width'(0), 1'b1, (frac_width-1)'(0)}; // -nan
+        else if(is_op1_zero | is_op2_zero) result = {result_sign, exp_width'(0), frac_width'(0)}; // +-zero
+        else if(is_underflow)begin
+            if(exp_bias > result_biased_exp + frac_width) result = {result_sign, exp_width'(0), frac_width'(0)}; // +-zero 
+            else result = {result_sign, exp_width'(0), round_frac}; // denormal
+        end
+        else if(is_op1_inf | is_op2_inf | is_overflow) result = {result_sign, ~exp_width'(0), frac_width'(0)}; // +-inf
         else result = {result_sign, result_exp, round_frac};
         
         exception = (5'(is_overflow) << `FP_OVERFLOW) | (5'(is_underflow) << `FP_UNDERFLOW) | (5'(is_inexact) << `FP_INEXACT);
