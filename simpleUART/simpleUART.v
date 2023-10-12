@@ -16,7 +16,7 @@ module simpleUART#(
 );
 
 localparam clk_bits = $clog2(CLK_FREQ/baudrate+1);
-localparam[clk_bits-1:0] baudrate_rst_cnt = clk_bits'(CLK_FREQ/baudrate);
+localparam[clk_bits-1:0] baudrate_rst_cnt = CLK_FREQ/baudrate;
 
 reg[clk_bits-1:0] tx_baudrate_clk_cnt = 0;
 reg[clk_bits-1:0] rx_baudrate_clk_cnt = 0;

@@ -1,0 +1,8 @@
+read -sv ../FloatingPointMul.sv ../FloatingPointRound.sv
+synth -top FloatingPointMul
+proc; opt
+techmap; opt
+flatten
+dfflibmap -liberty osu018_stdcells.lib
+abc -D 10000 -constr example.constr -liberty osu018_stdcells.lib
+stat -liberty osu018_stdcells.lib
