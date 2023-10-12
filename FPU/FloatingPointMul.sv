@@ -1,8 +1,8 @@
 `include "FloatingPointConsts.svh"
 
 module FloatingPointMul#(
-    parameter exp_width = 19,
-    parameter frac_width = 237
+    parameter exp_width = 8,
+    parameter frac_width = 23
 )(
     input logic[exp_width+frac_width:0] op1,
     input logic[exp_width+frac_width:0] op2,

@@ -8,7 +8,7 @@ module FloatingPointAdd#(
     input logic[exp_width+frac_width:0] op2,
     input logic[1:0] round_mode,
 
-    output logic[31:0] result,
+    output logic[exp_width+frac_width:0] result,
     output logic[4:0] exception
 );
     logic[exp_width-1:0] op1_exp, op2_exp;
@@ -55,10 +55,10 @@ module FloatingPointAdd#(
         op_small_exp = op_small[exp_width+frac_width-1:frac_width];
 
         op_big_manti = {2'b00, op_big_exp != {exp_width{1'b0}}, op_big[frac_width-1:0], 3'b000} << (op_big_exp == {exp_width{1'b0}});
-        if(op_big_exp - op_small_exp < frac_width+2)begin
+        if(op_big_exp - op_small_exp < frac_width+3)begin
             op_small_manti = ({2'b00, op_small_exp != {exp_width{1'b0}}, op_small[frac_width-1:0], 3'b000} << (op_small_exp == {exp_width{1'b0}})) >> (op_big_exp - op_small_exp);
         end else begin
-            op_small_manti = {frac_width+6{1'b1}};
+            op_small_manti = {{frac_width+5{1'b0}}, 1'b1};
         end
 
         is_op_big_zero = op_big_exp == {exp_width{1'b0}} && (~|op_big[frac_width-1:0]);
