@@ -37,6 +37,9 @@ int main(int argc, char **argv) {
         {(fp_type)-0x1.d2c0ep-68, (fp_type)0x1.8f075ep-77}, // denormal
         {(fp_type)-0x1.761efcp-109, (fp_type)0x1.2a6b76p-18},
         {(fp_type)0x1.2f64e6p+105, (fp_type)-0x1.1bb64cp-127},
+        {(fp_type)-0x1.e0a506p+76, (fp_type)-0x1.2045ap-130},
+        {(fp_type)-0x1.e0a506p126, (fp_type)-0x1.2045ap-130},
+        {(fp_type)0x1.54028cp-66, (fp_type)0x1.a227bep-61},
         
         {std::numeric_limits<fp_type>::infinity(), (fp_type)0x1.FFFFFEp0}, // inf
         {(fp_type)0x1.FFFFFEp0, std::numeric_limits<fp_type>::infinity()}, // inf
@@ -97,6 +100,7 @@ int main(int argc, char **argv) {
                 << " : " << std::hexfloat << std::bit_cast<fp_type>(mul_unit->result) << std::endl;
             std::cout << "expect = " << std::setfill('0') << std::right << std::hex << std::setw(8) << std::bit_cast<fp_bit>(test_data[i][0] * test_data[i][1])
                 << " : " << std::hexfloat << test_data[i][0] * test_data[i][1] << std::endl;
+            std::cout << mul_unit->FloatingPointMul__DOT__result_biased_exp << std::endl;
         }
     }
     std::fesetround(FE_DOWNWARD);

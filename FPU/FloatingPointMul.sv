@@ -18,9 +18,12 @@ module FloatingPointMul#(
     logic[exp_width-1:0] op1_exp, op2_exp;
     logic[frac_width-1:0] op1_frac, op2_frac;
 
+    logic[mul_mant_width-1:0] mul_mant_denorm;
+    logic[frac_width-1:0] op_frac_denorm[5:0];
+    logic[exp_width-1:0] denormal_shift_amount;
+
     logic[mul_mant_width-1:0] mul_mant;
     logic[frac_width+2:0] norm_mul_frac;
-    logic mul_carry;
 
     logic result_sign;
     /* verilator lint_off UNOPTFLAT */
@@ -54,14 +57,39 @@ module FloatingPointMul#(
         is_op2_nan = op2_exp == {exp_width{1'b1}} && (|op2_frac);
 
         result_sign = op1_sign ^ op2_sign;
-        added_exp = op1_exp + op2_exp;
-        mul_mant = ({op1_exp != {exp_width{1'b0}}, op1_frac} * {op2_exp != {exp_width{1'b0}}, op2_frac}) >> (((exp_bias+1) > added_exp) ? (exp_bias + 1 - added_exp) : 0);
-
-        mul_carry = mul_mant[mul_mant_width-1];
-        unique case(mul_carry)
-            1'b1: norm_mul_frac = {mul_mant[mul_mant_width-2:mul_mant_width-frac_width-3], |mul_mant[mul_mant_width-frac_width-4:0]};
-            1'b0: norm_mul_frac = {mul_mant[mul_mant_width-3:mul_mant_width-frac_width-4], |mul_mant[mul_mant_width-frac_width-5:0]};
-        endcase
+        mul_mant = ({op1_exp != {exp_width{1'b0}}, op1_frac} * {op2_exp != {exp_width{1'b0}}, op2_frac});
+        
+        if(exp_bias >= (op1_exp + op2_exp + {{(exp_width-1){1'b0}}, mul_mant[mul_mant_width-1]}))begin // result is denormal
+            added_exp = op1_exp + op2_exp;
+            mul_mant_denorm = mul_mant >> (exp_bias - added_exp);
+            norm_mul_frac = {mul_mant_denorm[mul_mant_width-2:mul_mant_width-frac_width-3], |mul_mant_denorm[mul_mant_width-frac_width-4:0]};
+        end else if((op1_exp == {exp_width{1'b0}} || op2_exp == {exp_width{1'b0}}))begin // result is normal and an input is denormal
+            op_frac_denorm[5] = (op1_exp == {exp_width{1'b0}}) ? op1_frac : op2_frac;
+            op_frac_denorm[4] = |op_frac_denorm[5][frac_width-1:frac_width-16] ? op_frac_denorm[5] : (op_frac_denorm[5] << 16);
+            op_frac_denorm[3] = |op_frac_denorm[4][frac_width-1:frac_width-8] ? op_frac_denorm[4] : (op_frac_denorm[4] << 8);
+            op_frac_denorm[2] = |op_frac_denorm[3][frac_width-1:frac_width-4] ? op_frac_denorm[3] : (op_frac_denorm[3] << 4);
+            op_frac_denorm[1] = |op_frac_denorm[2][frac_width-1:frac_width-2] ? op_frac_denorm[2] : (op_frac_denorm[2] << 2);
+            denormal_shift_amount = {
+                {(exp_width-5){1'b0}},
+                ~|op_frac_denorm[5][frac_width-1:frac_width-16],
+                ~|op_frac_denorm[4][frac_width-1:frac_width-8],
+                ~|op_frac_denorm[3][frac_width-1:frac_width-4],
+                ~|op_frac_denorm[2][frac_width-1:frac_width-2],
+                ~op_frac_denorm[1][frac_width-1]
+            } + {{(exp_width-1){1'b0}}, 1'b1};
+            mul_mant_denorm = mul_mant << denormal_shift_amount;
+            added_exp = op1_exp + op2_exp + {{(exp_width-1){1'b0}}, mul_mant_denorm[mul_mant_width-1]} - denormal_shift_amount + 1;
+            unique case(mul_mant_denorm[mul_mant_width-1])
+                1'b1: norm_mul_frac = {mul_mant_denorm[mul_mant_width-2:mul_mant_width-frac_width-3], |mul_mant_denorm[mul_mant_width-frac_width-4:0]};
+                1'b0: norm_mul_frac = {mul_mant_denorm[mul_mant_width-3:mul_mant_width-frac_width-4], |mul_mant_denorm[mul_mant_width-frac_width-5:0]};
+            endcase
+        end else begin
+            added_exp = op1_exp + op2_exp + {{(exp_width-1){1'b0}}, mul_mant[mul_mant_width-1]};
+            unique case(mul_mant[mul_mant_width-1])
+                1'b1: norm_mul_frac = {mul_mant[mul_mant_width-2:mul_mant_width-frac_width-3], |mul_mant[mul_mant_width-frac_width-4:0]};
+                1'b0: norm_mul_frac = {mul_mant[mul_mant_width-3:mul_mant_width-frac_width-4], |mul_mant[mul_mant_width-frac_width-5:0]};
+            endcase
+        end
     end
 
     FloatingPointRound#(
@@ -76,7 +104,7 @@ module FloatingPointMul#(
     );
 
     always_comb begin
-        result_biased_exp = added_exp + {{(exp_width-1){1'b0}}, mul_carry} + {{(exp_width-1){1'b0}}, round_carry};
+        result_biased_exp = added_exp + {{(exp_width-1){1'b0}}, round_carry};
         
         is_overflow = result_biased_exp > (exp_bias*3);
         is_underflow = exp_bias > result_biased_exp;
@@ -94,16 +122,18 @@ module FloatingPointMul#(
                 result = {result_sign, {exp_width{1'b0}}, round_frac}; // denormal
             end else begin
                 unique case(round_mode)
-                    `FP_ROUND_DOWNWARD: result = {result_sign, {exp_width{1'b0}}, {(frac_width-1){1'b0}}, 1'b1}; // +-MIN
+                    `FP_ROUND_DOWNWARD: result = {result_sign, {exp_width{1'b0}}, {(frac_width-1){1'b0}}, |norm_mul_frac[2]}; // +-MIN
+                    `FP_ROUND_UPWARD: result = {result_sign, {exp_width{1'b0}}, {(frac_width-1){1'b0}}, |norm_mul_frac[2]}; // +-MIN
                     default: result = {result_sign, {exp_width{1'b0}}, {frac_width{1'b0}}}; // +-zero
                 endcase
             end
         end
         else if(is_overflow) begin
             unique case(round_mode)
-                `FP_ROUND_TONEAREST: result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
-                `FP_ROUND_UPWARD: result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
-                default: result = {result_sign, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}}; // +-MAX
+                `FP_ROUND_TOWARDZERO : result = {result_sign, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}}; // +-MAX
+                `FP_ROUND_UPWARD: result = result_sign ? {result_sign, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}} : {1'b0, {exp_width{1'b1}}, {frac_width{1'b0}}}; // -MAX or +inf
+                `FP_ROUND_DOWNWARD: result = result_sign ? {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}} : {result_sign, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}}; // -inf or +MAX
+                default: result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
             endcase
         end
         else result = {result_sign, result_exp[exp_width-1:0], round_frac};
