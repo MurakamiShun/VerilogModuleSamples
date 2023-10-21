@@ -12,7 +12,7 @@ module FloatingPointMul#(
     output logic[4:0] exception
 );
     localparam mul_mant_width = (frac_width+1)*2;
-    localparam exp_bias = 2**(exp_width-1)-1;
+    localparam[exp_width:0]exp_bias = 2**(exp_width-1)-1;
 
     logic op1_sign, op2_sign;
     logic[exp_width-1:0] op1_exp, op2_exp;
@@ -27,6 +27,7 @@ module FloatingPointMul#(
     logic[frac_width-1:0] round_frac;
     logic round_carry;
 
+    logic[exp_width:0] added_exp;
     logic[exp_width:0] result_biased_exp;
     logic[exp_width:0] result_exp;
     logic is_op1_zero, is_op2_zero;
@@ -53,14 +54,14 @@ module FloatingPointMul#(
         is_op2_nan = op2_exp == {exp_width{1'b1}} && (|op2_frac);
 
         result_sign = op1_sign ^ op2_sign;
-        mul_mant = {op1_exp != {exp_width{1'b0}}, op1_frac} * {op2_exp != {exp_width{1'b0}}, op2_frac};
+        added_exp = op1_exp + op2_exp;
+        mul_mant = ({op1_exp != {exp_width{1'b0}}, op1_frac} * {op2_exp != {exp_width{1'b0}}, op2_frac}) >> (((exp_bias+1) > added_exp) ? (exp_bias + 1 - added_exp) : 0);
 
-        unique case(mul_mant[mul_mant_width-1])
+        mul_carry = mul_mant[mul_mant_width-1];
+        unique case(mul_carry)
             1'b1: norm_mul_frac = {mul_mant[mul_mant_width-2:mul_mant_width-frac_width-3], |mul_mant[mul_mant_width-frac_width-4:0]};
             1'b0: norm_mul_frac = {mul_mant[mul_mant_width-3:mul_mant_width-frac_width-4], |mul_mant[mul_mant_width-frac_width-5:0]};
         endcase
-
-        mul_carry = mul_mant[mul_mant_width-1];
     end
 
     FloatingPointRound#(
@@ -75,7 +76,7 @@ module FloatingPointMul#(
     );
 
     always_comb begin
-        result_biased_exp = op1_exp + op2_exp + {{(exp_width-2){1'b0}},{1'b0, round_carry} + {1'b0, mul_carry}};
+        result_biased_exp = added_exp + {{(exp_width-1){1'b0}}, mul_carry} + {{(exp_width-1){1'b0}}, round_carry};
         
         is_overflow = result_biased_exp > (exp_bias*3);
         is_underflow = exp_bias > result_biased_exp;
@@ -83,15 +84,28 @@ module FloatingPointMul#(
         
         result_exp = result_biased_exp - exp_bias;
 
-        if(is_op1_nan) result = op1; // NAN propagation
-        else if(is_op2_nan) result = op2; // NAN propagation
+        if(is_op1_nan) result = op1  | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
+        else if(is_op2_nan) result = op2  | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
         else if(is_op1_inf & is_op2_zero | is_op1_zero & is_op2_inf) result = {1'b1, {exp_width{1'b1}}, 1'b1, {(frac_width-1){1'b0}}}; // -nan
         else if(is_op1_zero | is_op2_zero) result = {result_sign, {exp_width{1'b0}}, {frac_width{1'b0}}}; // +-zero
+        else if(is_op1_inf | is_op2_inf) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
         else if(is_underflow)begin
-            if(exp_bias > result_biased_exp + frac_width) result = {result_sign, {exp_width{1'b0}}, {frac_width{1'b0}}}; // +-zero 
-            else result = {result_sign, {exp_width{1'b0}}, round_frac}; // denormal
+            if(|round_frac)begin
+                result = {result_sign, {exp_width{1'b0}}, round_frac}; // denormal
+            end else begin
+                unique case(round_mode)
+                    `FP_ROUND_DOWNWARD: result = {result_sign, {exp_width{1'b0}}, {(frac_width-1){1'b0}}, 1'b1}; // +-MIN
+                    default: result = {result_sign, {exp_width{1'b0}}, {frac_width{1'b0}}}; // +-zero
+                endcase
+            end
         end
-        else if(is_op1_inf | is_op2_inf | is_overflow) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
+        else if(is_overflow) begin
+            unique case(round_mode)
+                `FP_ROUND_TONEAREST: result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
+                `FP_ROUND_UPWARD: result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
+                default: result = {result_sign, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}}; // +-MAX
+            endcase
+        end
         else result = {result_sign, result_exp[exp_width-1:0], round_frac};
         
         exception = ({4'b0, is_overflow} << `FP_OVERFLOW) | ({4'b0, is_underflow} << `FP_UNDERFLOW) | ({4'b0, is_inexact} << `FP_INEXACT);

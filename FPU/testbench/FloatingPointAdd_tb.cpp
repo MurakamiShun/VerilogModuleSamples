@@ -32,6 +32,9 @@ int main(int argc, char **argv) {
         {(fp_type)-0x1.249138p-127, (fp_type)-0x1.249138p-127},
         {(fp_type)-0x1.249138p-127, (fp_type)0x1.0b3e9ap-113},
         {(fp_type)-0x1.249138p127, (fp_type)0x1.0b3e9ap127}, // overflow
+        {(fp_type)0x1.a181f4p-65, (fp_type)0x1.9bf2dcp-68}, // under flow
+        {(fp_type)0x1.fb9e3ap+27, (fp_type)-0x1.bfcd04p+35},
+        {(fp_type)0x1.5fb544p-16, (fp_type)-0x1.400c5p-10},
 
         {(fp_type)0.0, (fp_type)0.0},
         {(fp_type)0.0, (fp_type)-0.0},
@@ -46,6 +49,10 @@ int main(int argc, char **argv) {
         {(fp_type)0x1.FFFFFEp-63, (fp_type)0x1.000000p-63},
         {(fp_type)0x1.FFFFFEp-63, (fp_type)0x1.000000p-64}, // under flow
         {std::numeric_limits<fp_type>::infinity(), (fp_type)0x1.FFFFFEp0}, // inf
+        {std::numeric_limits<fp_type>::infinity(), std::numeric_limits<fp_type>::infinity()}, // inf
+        {std::numeric_limits<fp_type>::infinity(), -std::numeric_limits<fp_type>::infinity()}, // inf
+        {-std::numeric_limits<fp_type>::infinity(), std::numeric_limits<fp_type>::infinity()}, // inf
+        {-std::numeric_limits<fp_type>::infinity(), -std::numeric_limits<fp_type>::infinity()}, // inf
         {(fp_type)0x1.FFFFFEp0, std::numeric_limits<fp_type>::infinity()}, // inf
         {-std::numeric_limits<fp_type>::infinity(), (fp_type)0x1.FFFFFEp0}, // -inf
         {(fp_type)-0x1.FFFFFEp0, std::numeric_limits<fp_type>::infinity()}, // -inf

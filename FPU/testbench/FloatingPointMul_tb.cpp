@@ -33,6 +33,10 @@ int main(int argc, char **argv) {
         {(fp_type)0x1.FFFFFEp-70, (fp_type)-0x1.000000p-110},
         {(fp_type)0x1.FFFFFEp-63, (fp_type)0x1.000000p-63},
         {(fp_type)0x1.FFFFFEp-63, (fp_type)0x1.000000p-64}, // under flow
+        
+        {(fp_type)-0x1.d2c0ep-68, (fp_type)0x1.8f075ep-77}, // denormal
+        {(fp_type)-0x1.761efcp-109, (fp_type)0x1.2a6b76p-18},
+        
         {std::numeric_limits<fp_type>::infinity(), (fp_type)0x1.FFFFFEp0}, // inf
         {(fp_type)0x1.FFFFFEp0, std::numeric_limits<fp_type>::infinity()}, // inf
         {-std::numeric_limits<fp_type>::infinity(), (fp_type)0x1.FFFFFEp0}, // -inf

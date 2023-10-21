@@ -103,15 +103,18 @@ module FloatingPointAdd#(
         is_overflow = ~is_underflow & result_exp[exp_width];
         is_inexact = |{norm_manti[0][2:0]};
 
-        if(is_op_big_nan) result = op_big; // NAN propagation
-        else if(is_op_small_nan) result = op_small; // NAN propagation
+        if(is_op_big_nan) result = op_big | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
+        else if(is_op_small_nan) result = op_small  | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
+        else if(is_op_big_inf & is_op_small_inf & (op_big_sign^op_small_sign))begin
+            result = {{(exp_width+1){1'b1}}, 1'b1, {(frac_width-1){1'b0}}}; // -nan
+        end
+        else if(is_op_big_inf | is_op_small_inf | is_overflow) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
         else if(~|added_manti) begin // +-zero
             unique case(round_mode)
                 `FP_ROUND_DOWNWARD: result = {op_big_sign | op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
                 default: result = {op_big_sign & op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
             endcase
         end
-        else if(is_op_big_inf | is_op_small_inf | is_overflow) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
         else result = {result_sign, result_exp[exp_width-1:0], round_frac};
 
         exception = ({4'b0, is_overflow} << `FP_OVERFLOW) | ({4'b0, is_underflow} << `FP_UNDERFLOW) | ({4'b0, is_inexact} << `FP_INEXACT);
