@@ -36,6 +36,7 @@ int main(int argc, char **argv) {
         
         {(fp_type)-0x1.d2c0ep-68, (fp_type)0x1.8f075ep-77}, // denormal
         {(fp_type)-0x1.761efcp-109, (fp_type)0x1.2a6b76p-18},
+        {(fp_type)0x1.2f64e6p+105, (fp_type)-0x1.1bb64cp-127},
         
         {std::numeric_limits<fp_type>::infinity(), (fp_type)0x1.FFFFFEp0}, // inf
         {(fp_type)0x1.FFFFFEp0, std::numeric_limits<fp_type>::infinity()}, // inf

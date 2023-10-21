@@ -18,6 +18,8 @@ module FloatingPointAdd#(
     logic[exp_width-1:0] op_big_exp, op_small_exp;
 
     logic[frac_width+5:0] op_big_manti, op_small_manti;
+    logic[frac_width+5:0] op_small_manti_shifted;
+    logic[exp_width-1:0] exp_diff;
 
     logic[frac_width+5:0] added_manti;
     logic[frac_width+5:0] added_manti_abs;
@@ -54,12 +56,12 @@ module FloatingPointAdd#(
         op_big_exp = op_big[exp_width+frac_width-1:frac_width];
         op_small_exp = op_small[exp_width+frac_width-1:frac_width];
 
+        exp_diff = op_big_exp - op_small_exp;
+
         op_big_manti = {2'b00, op_big_exp != {exp_width{1'b0}}, op_big[frac_width-1:0], 3'b000} << (op_big_exp == {exp_width{1'b0}});
-        if(op_big_exp - op_small_exp < frac_width+3)begin
-            op_small_manti = ({2'b00, op_small_exp != {exp_width{1'b0}}, op_small[frac_width-1:0], 3'b000} << (op_small_exp == {exp_width{1'b0}})) >> (op_big_exp - op_small_exp);
-        end else begin
-            op_small_manti = {{frac_width+5{1'b0}}, 1'b1};
-        end
+        op_small_manti = {2'b00, op_small_exp != {exp_width{1'b0}}, op_small[frac_width-1:0], 3'b000} << (op_small_exp == {exp_width{1'b0}});
+
+        op_small_manti_shifted = (op_small_manti >> exp_diff) | {{(frac_width+5){1'b0}}, |(op_small_manti & ~({(frac_width+6){1'b1}} << exp_diff))};
 
         is_op_big_zero = op_big_exp == {exp_width{1'b0}} && (~|op_big[frac_width-1:0]);
         is_op_small_zero = op_small_exp == {exp_width{1'b0}} && (~|op_small[frac_width-1:0]);
@@ -68,7 +70,7 @@ module FloatingPointAdd#(
         is_op_big_nan = op_big_exp == {exp_width{1'b1}} && (|op_big[frac_width-1:0]);
         is_op_small_nan = op_small_exp == {exp_width{1'b1}} && (|op_small[frac_width-1:0]);
 
-        added_manti = (op_big_sign ? -op_big_manti : op_big_manti) + (op_small_sign ? -op_small_manti : op_small_manti);
+        added_manti = (op_big_sign ? -op_big_manti : op_big_manti) + (op_small_sign ? -op_small_manti_shifted : op_small_manti_shifted);
         result_sign = added_manti[frac_width+5];
         
         added_manti_abs = (result_sign ? -added_manti : added_manti); // absolute
