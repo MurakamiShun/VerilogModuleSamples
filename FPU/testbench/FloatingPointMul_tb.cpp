@@ -40,6 +40,10 @@ int main(int argc, char **argv) {
         {(fp_type)-0x1.e0a506p+76, (fp_type)-0x1.2045ap-130},
         {(fp_type)-0x1.e0a506p126, (fp_type)-0x1.2045ap-130},
         {(fp_type)0x1.54028cp-66, (fp_type)0x1.a227bep-61},
+        {(fp_type)0x1.645b3ep+1, (fp_type)0x1.58535p-128},
+        {(fp_type)0x1.1a846cp-127, (fp_type)0x1.9273e6p-26},
+        {(fp_type)0x1.ba994p-130, (fp_type)0x1.4e0a66p-4},
+        {(fp_type)0x1.5ec448p-127, (fp_type)-0x1.913254p+40},
         
         {std::numeric_limits<fp_type>::infinity(), (fp_type)0x1.FFFFFEp0}, // inf
         {(fp_type)0x1.FFFFFEp0, std::numeric_limits<fp_type>::infinity()}, // inf
@@ -49,19 +53,13 @@ int main(int argc, char **argv) {
         {(fp_type)-0x1.FFFFFEp0, std::numeric_limits<fp_type>::quiet_NaN()}, // nan
         {std::numeric_limits<fp_type>::infinity(), (fp_type)0.0}, // inf*0
         {(fp_type)0.0, std::numeric_limits<fp_type>::infinity()}, // 0*inf
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
     };
+
+    for(int i = 0; i < 1000; ++i){
+        test_data.push_back(
+            {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())}
+        );
+    }
 
     std::fesetround(FE_TONEAREST);
     for(int i = 0; i < test_data.size(); ++i){
@@ -80,6 +78,7 @@ int main(int argc, char **argv) {
                 << " : " << std::hexfloat << std::bit_cast<fp_type>(mul_unit->result) << std::endl;
             std::cout << "expect = " << std::setfill('0') << std::right << std::hex << std::setw(8) << std::bit_cast<fp_bit>(test_data[i][0] * test_data[i][1])
                 << " : " << std::hexfloat << test_data[i][0] * test_data[i][1] << std::endl;
+            std::cout << mul_unit->FloatingPointMul__DOT__mul_mant << std::endl;
         }
     }
 
@@ -100,7 +99,6 @@ int main(int argc, char **argv) {
                 << " : " << std::hexfloat << std::bit_cast<fp_type>(mul_unit->result) << std::endl;
             std::cout << "expect = " << std::setfill('0') << std::right << std::hex << std::setw(8) << std::bit_cast<fp_bit>(test_data[i][0] * test_data[i][1])
                 << " : " << std::hexfloat << test_data[i][0] * test_data[i][1] << std::endl;
-            std::cout << mul_unit->FloatingPointMul__DOT__result_biased_exp << std::endl;
         }
     }
     std::fesetround(FE_DOWNWARD);

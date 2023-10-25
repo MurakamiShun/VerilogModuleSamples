@@ -60,19 +60,13 @@ int main(int argc, char **argv) {
         {(fp_type)-0x1.FFFFFEp0, std::numeric_limits<fp_type>::quiet_NaN()}, // nan
         {std::numeric_limits<fp_type>::infinity(), (fp_type)0.0}, // inf*0
         {(fp_type)0.0, std::numeric_limits<fp_type>::infinity()}, // 0*inf
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
-        {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())},
     };
+    
+    for(int i = 0; i < 1000; ++i){
+        test_data.push_back(
+            {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())}
+        );
+    }
 
     std::fesetround(FE_TONEAREST);
     for(int i = 0; i < test_data.size(); ++i){

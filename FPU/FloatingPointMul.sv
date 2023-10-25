@@ -18,11 +18,12 @@ module FloatingPointMul#(
     logic[exp_width-1:0] op1_exp, op2_exp;
     logic[frac_width-1:0] op1_frac, op2_frac;
 
-    logic[mul_mant_width-1:0] mul_mant_denorm;
-    logic[frac_width-1:0] op_frac_denorm[5:0];
-    logic[exp_width-1:0] denormal_shift_amount;
-
     logic[mul_mant_width-1:0] mul_mant;
+
+    logic[mul_mant_width-1:0] mul_mant_denorm;
+    logic[frac_width:0] op_frac_denorm[5:0];
+    logic[exp_width:0] denormal_shift_amount;
+
     logic[frac_width+2:0] norm_mul_frac;
 
     logic result_sign;
@@ -59,30 +60,39 @@ module FloatingPointMul#(
         result_sign = op1_sign ^ op2_sign;
         mul_mant = ({op1_exp != {exp_width{1'b0}}, op1_frac} * {op2_exp != {exp_width{1'b0}}, op2_frac});
         
-        if(exp_bias >= (op1_exp + op2_exp + {{(exp_width-1){1'b0}}, mul_mant[mul_mant_width-1]}))begin // result is denormal
+        op_frac_denorm[5] = {1'b0, (op1_exp == {exp_width{1'b0}}) ? op1_frac : op2_frac};
+        op_frac_denorm[4] = |op_frac_denorm[5][frac_width:frac_width-15] ? op_frac_denorm[5] : (op_frac_denorm[5] << 16);
+        op_frac_denorm[3] = |op_frac_denorm[4][frac_width:frac_width-7] ? op_frac_denorm[4] : (op_frac_denorm[4] << 8);
+        op_frac_denorm[2] = |op_frac_denorm[3][frac_width:frac_width-3] ? op_frac_denorm[3] : (op_frac_denorm[3] << 4);
+        op_frac_denorm[1] = |op_frac_denorm[2][frac_width:frac_width-1] ? op_frac_denorm[2] : (op_frac_denorm[2] << 2);
+        denormal_shift_amount = {
+            {(exp_width-4){1'b0}},
+            ~|op_frac_denorm[5][frac_width:frac_width-15],
+            ~|op_frac_denorm[4][frac_width:frac_width-7],
+            ~|op_frac_denorm[3][frac_width:frac_width-3],
+            ~|op_frac_denorm[2][frac_width:frac_width-1],
+            ~op_frac_denorm[1][frac_width]
+        };
+
+        if((op1_exp == {exp_width{1'b0}}) ^ (op2_exp == {exp_width{1'b0}}))begin // an input is denormal
+                if(op1_exp + op2_exp > exp_bias + denormal_shift_amount)begin
+                    mul_mant_denorm = mul_mant << (denormal_shift_amount); // result is normal
+                end else begin
+                    mul_mant_denorm = (
+                        (mul_mant >> (exp_bias + (frac_width - 3) - (op1_exp + op2_exp)))
+                        | {{(mul_mant_width-1){1'b0}},|(mul_mant & ~({mul_mant_width{1'b1}} << (exp_bias + (frac_width-3) - (op1_exp + op2_exp))))}
+                    ) << (frac_width-3); // result is denormal
+                end
+                added_exp = op1_exp + op2_exp + {{(exp_width-1){1'b0}}, mul_mant_denorm[mul_mant_width-1]} - denormal_shift_amount + 1;
+                unique case(mul_mant_denorm[mul_mant_width-1])
+                    1'b1: norm_mul_frac = {mul_mant_denorm[mul_mant_width-2:mul_mant_width-frac_width-3], |mul_mant_denorm[mul_mant_width-frac_width-4:0]};
+                    1'b0: norm_mul_frac = {mul_mant_denorm[mul_mant_width-3:mul_mant_width-frac_width-4], |mul_mant_denorm[mul_mant_width-frac_width-5:0]};
+                endcase
+        end else if((op1_exp + op2_exp + {{(exp_width-1){1'b0}}, mul_mant[mul_mant_width-1]}) <= exp_bias)begin // result is denormal
             added_exp = op1_exp + op2_exp;
-            mul_mant_denorm = mul_mant >> (exp_bias - added_exp);
+            mul_mant_denorm = (mul_mant >> (exp_bias - added_exp)
+            | {{(mul_mant_width-1){1'b0}},|(mul_mant & ~({mul_mant_width{1'b1}} << (exp_bias - added_exp)))});
             norm_mul_frac = {mul_mant_denorm[mul_mant_width-2:mul_mant_width-frac_width-3], |mul_mant_denorm[mul_mant_width-frac_width-4:0]};
-        end else if((op1_exp == {exp_width{1'b0}} || op2_exp == {exp_width{1'b0}}))begin // result is normal and an input is denormal
-            op_frac_denorm[5] = (op1_exp == {exp_width{1'b0}}) ? op1_frac : op2_frac;
-            op_frac_denorm[4] = |op_frac_denorm[5][frac_width-1:frac_width-16] ? op_frac_denorm[5] : (op_frac_denorm[5] << 16);
-            op_frac_denorm[3] = |op_frac_denorm[4][frac_width-1:frac_width-8] ? op_frac_denorm[4] : (op_frac_denorm[4] << 8);
-            op_frac_denorm[2] = |op_frac_denorm[3][frac_width-1:frac_width-4] ? op_frac_denorm[3] : (op_frac_denorm[3] << 4);
-            op_frac_denorm[1] = |op_frac_denorm[2][frac_width-1:frac_width-2] ? op_frac_denorm[2] : (op_frac_denorm[2] << 2);
-            denormal_shift_amount = {
-                {(exp_width-5){1'b0}},
-                ~|op_frac_denorm[5][frac_width-1:frac_width-16],
-                ~|op_frac_denorm[4][frac_width-1:frac_width-8],
-                ~|op_frac_denorm[3][frac_width-1:frac_width-4],
-                ~|op_frac_denorm[2][frac_width-1:frac_width-2],
-                ~op_frac_denorm[1][frac_width-1]
-            } + {{(exp_width-1){1'b0}}, 1'b1};
-            mul_mant_denorm = mul_mant << denormal_shift_amount;
-            added_exp = op1_exp + op2_exp + {{(exp_width-1){1'b0}}, mul_mant_denorm[mul_mant_width-1]} - denormal_shift_amount + 1;
-            unique case(mul_mant_denorm[mul_mant_width-1])
-                1'b1: norm_mul_frac = {mul_mant_denorm[mul_mant_width-2:mul_mant_width-frac_width-3], |mul_mant_denorm[mul_mant_width-frac_width-4:0]};
-                1'b0: norm_mul_frac = {mul_mant_denorm[mul_mant_width-3:mul_mant_width-frac_width-4], |mul_mant_denorm[mul_mant_width-frac_width-5:0]};
-            endcase
         end else begin
             added_exp = op1_exp + op2_exp + {{(exp_width-1){1'b0}}, mul_mant[mul_mant_width-1]};
             unique case(mul_mant[mul_mant_width-1])

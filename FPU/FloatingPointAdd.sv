@@ -101,7 +101,7 @@ module FloatingPointAdd#(
         result_exp_before_norm_shift = op_big_exp + {{(exp_width-2){1'b0}}, (round_carry+2'b01)};
         result_exp = result_exp_before_norm_shift - norm_shift_ext;
 
-        is_underflow = result_exp_before_norm_shift< norm_shift_ext;
+        is_underflow = result_exp_before_norm_shift < norm_shift_ext;
         is_overflow = ~is_underflow & result_exp[exp_width];
         is_inexact = |{norm_manti[0][2:0]};
 
