@@ -26,11 +26,14 @@ module FloatingPointAdd#(
     logic[frac_width+5:0] added_manti;
     logic[frac_width+5:0] added_manti_abs_tmp;
     logic[frac_width+4:0] added_manti_abs;
+    logic[frac_width+4:0] denormed_result;
 
     localparam shifter_stages = $clog2(frac_width+5);
     logic[shifter_stages-1:0] norm_shift;
     /* verilator lint_off UNOPTFLAT */
     logic[frac_width+4:0] norm_manti[shifter_stages:0];
+
+    logic[frac_width+4:0] norm_manti_merge;
 
     logic[frac_width-1:0] round_frac;
     logic round_carry;
@@ -49,6 +52,13 @@ module FloatingPointAdd#(
         op1_exp = op1[exp_width+frac_width-1:frac_width];
         op2_exp = op2[exp_width+frac_width-1:frac_width];
 
+        is_op1_zero = op1_exp == {exp_width{1'b0}} && (~|op1[frac_width-1:0]);
+        is_op2_zero = op2_exp == {exp_width{1'b0}} && (~|op2[frac_width-1:0]);
+        is_op1_inf = op1_exp == {exp_width{1'b1}} && (~|op1[frac_width-1:0]);
+        is_op2_inf = op2_exp == {exp_width{1'b1}} && (~|op2[frac_width-1:0]);
+        is_op1_nan = op1_exp == {exp_width{1'b1}} && (|op1[frac_width-1:0]);
+        is_op2_nan = op2_exp == {exp_width{1'b1}} && (|op2[frac_width-1:0]);
+
         exp_diff = op1_exp - op2_exp;
 
         op_big = exp_diff[exp_width] ? op2 : op1;
@@ -66,21 +76,37 @@ module FloatingPointAdd#(
         op_big_manti = {2'b00, op_big_exp != {exp_width{1'b0}}, op_big[frac_width-1:0], 3'b000} << (op_big_exp == {exp_width{1'b0}});
         op_small_manti = {2'b00, op_small_exp != {exp_width{1'b0}}, op_small[frac_width-1:0], 3'b000} << (op_small_exp == {exp_width{1'b0}});
 
-        op_small_manti_shifted = (op_small_manti >> exp_diff_abs) | {{(frac_width+5){1'b0}}, |(op_small_manti & ~({(frac_width+6){1'b1}} << exp_diff_abs))};
-
-        is_op1_zero = op1_exp == {exp_width{1'b0}} && (~|op1[frac_width-1:0]);
-        is_op2_zero = op2_exp == {exp_width{1'b0}} && (~|op2[frac_width-1:0]);
-        is_op1_inf = op1_exp == {exp_width{1'b1}} && (~|op1[frac_width-1:0]);
-        is_op2_inf = op2_exp == {exp_width{1'b1}} && (~|op2[frac_width-1:0]);
-        is_op1_nan = op1_exp == {exp_width{1'b1}} && (|op1[frac_width-1:0]);
-        is_op2_nan = op2_exp == {exp_width{1'b1}} && (|op2[frac_width-1:0]);
+        if(exp_diff_abs == 0 || exp_diff_abs == 1)begin
+            op_small_manti_shifted = (exp_diff_abs == 0) ? op_small_manti : (op_small_manti >> 1);
+        end else begin
+            op_small_manti_shifted = (op_small_manti >> exp_diff_abs) | {{(frac_width+5){1'b0}}, |(op_small_manti & ~({(frac_width+6){1'b1}} << exp_diff_abs))};
+        end
 
         added_manti = op_big_manti + ((op_big_sign ^ op_small_sign) ? -op_small_manti_shifted : op_small_manti_shifted);
-        result_sign = (op_big_sign ^ added_manti[frac_width+5]);
         
-        added_manti_abs_tmp = (added_manti[frac_width+5] ? -added_manti : added_manti); // absolute
-        added_manti_abs = added_manti_abs_tmp[frac_width+4:0];
-        norm_manti[shifter_stages] = added_manti_abs;
+        if(exp_diff_abs == 0 || exp_diff_abs == 1)begin
+            result_sign = (op_big_sign ^ added_manti[frac_width+5]);
+            added_manti_abs_tmp = (added_manti[frac_width+5] ? -added_manti : added_manti); // absolute
+            added_manti_abs = added_manti_abs_tmp[frac_width+4:0];
+            norm_manti[shifter_stages] = added_manti_abs;
+            norm_manti_merge = norm_manti[0];
+
+            norm_shift_ext = {{(exp_width-shifter_stages+1){1'b0}}, norm_shift};
+        end else begin
+            result_sign = op_big_sign;
+            added_manti_abs = added_manti[frac_width+4:0];
+
+            if(added_manti[frac_width+4])begin // carry up
+                norm_manti_merge = added_manti[frac_width+4:0];
+                norm_shift_ext = 0;
+            end else if(added_manti[frac_width+3])begin
+                norm_manti_merge = {added_manti[frac_width+3:0], 1'b0};
+                norm_shift_ext = 1;
+            end else begin  // carry down
+                norm_manti_merge = {added_manti[frac_width+2:0], 2'b00};
+                norm_shift_ext = 2;
+            end
+        end
     end
 
     generate
@@ -95,7 +121,7 @@ module FloatingPointAdd#(
         .frac_width(frac_width)
     )round_module(
         .sign(result_sign),
-        .in_frac({norm_manti[0][frac_width+3:2], |norm_manti[0][1:0]}),
+        .in_frac({norm_manti_merge[frac_width+3:2], |norm_manti_merge[1:0]}),
         .mode(round_mode),
 
         .out_frac(round_frac),
@@ -103,12 +129,12 @@ module FloatingPointAdd#(
     );
 
     always_comb begin
-        norm_shift_ext = {{(exp_width-shifter_stages+1){1'b0}}, norm_shift};
         result_exp = op_big_exp + {{(exp_width-1){1'b0}}, {1'b0, round_carry} + 1'b01} - norm_shift_ext;
+        denormed_result = added_manti_abs << (op_big_exp + 1);
 
         is_underflow = result_exp[exp_width] | result_exp == 0;
         is_overflow = ~is_underflow & (&result_exp[exp_width-1:0]);
-        is_inexact = |{norm_manti[0][2:0]};
+        is_inexact = |{norm_manti_merge[2:0]};
 
         if(is_op1_nan) result = op1 | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
         else if(is_op2_nan) result = op2  | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
@@ -124,14 +150,14 @@ module FloatingPointAdd#(
                 `FP_ROUND_TOWARDZERO: result = {result_sign, {(exp_width-1){1'b1}}, 1'b0, {frac_width{1'b1}}}; // +-MAX
             endcase
         end
-        else if(~|added_manti_abs) begin // +-zero
+        else if(~|norm_manti_merge) begin // +-zero
             unique case(round_mode)
                 `FP_ROUND_DOWNWARD: result = {op_big_sign | op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
                 default: result = {op_big_sign & op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
             endcase
         end
         else if(is_underflow)begin
-            result = {result_sign, {exp_width{1'b0}}, {1'b1, round_frac[frac_width-1:1]} >> -result_exp};
+            result = {result_sign, {exp_width{1'b0}}, round_carry ? denormed_result[frac_width+3:4] : denormed_result[frac_width+4:5]};
         end
         else result = {result_sign, result_exp[exp_width-1:0], round_frac};
 

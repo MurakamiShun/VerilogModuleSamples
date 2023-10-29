@@ -44,6 +44,7 @@ int main(int argc, char **argv) {
         {(fp_type)0x1.1a846cp-127, (fp_type)0x1.9273e6p-26},
         {(fp_type)0x1.ba994p-130, (fp_type)0x1.4e0a66p-4},
         {(fp_type)0x1.5ec448p-127, (fp_type)-0x1.913254p+40},
+        {(fp_type)-0x1.b905dp-127, (fp_type)0x1.b17b6cp+0},
         
         {std::numeric_limits<fp_type>::infinity(), (fp_type)0x1.FFFFFEp0}, // inf
         {(fp_type)0x1.FFFFFEp0, std::numeric_limits<fp_type>::infinity()}, // inf
@@ -55,7 +56,7 @@ int main(int argc, char **argv) {
         {(fp_type)0.0, std::numeric_limits<fp_type>::infinity()}, // 0*inf
     };
 
-    for(int i = 0; i < 1000; ++i){
+    for(int i = 0; i < 1000000; ++i){
         test_data.push_back(
             {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())}
         );
@@ -78,7 +79,6 @@ int main(int argc, char **argv) {
                 << " : " << std::hexfloat << std::bit_cast<fp_type>(mul_unit->result) << std::endl;
             std::cout << "expect = " << std::setfill('0') << std::right << std::hex << std::setw(8) << std::bit_cast<fp_bit>(test_data[i][0] * test_data[i][1])
                 << " : " << std::hexfloat << test_data[i][0] * test_data[i][1] << std::endl;
-            std::cout << mul_unit->FloatingPointMul__DOT__mul_mant << std::endl;
         }
     }
 

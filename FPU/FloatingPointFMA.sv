@@ -1,11 +1,12 @@
 `include "FloatingPointConsts.svh"
 
-module FloatingPointMul#(
+module FloatingPointFMA#(
     parameter exp_width = 8,
     parameter frac_width = 23
 )(
     input logic[exp_width+frac_width:0] op1,
     input logic[exp_width+frac_width:0] op2,
+    input logic[exp_width+frac_width:0] op_sum,
     input logic[1:0] round_mode,
 
     output logic[exp_width+frac_width:0] result,
@@ -15,8 +16,8 @@ module FloatingPointMul#(
     localparam[exp_width:0]exp_bias = (2**(exp_width-1))-1;
 
     logic op1_sign, op2_sign;
-    logic[exp_width-1:0] op1_exp, op2_exp;
-    logic[frac_width-1:0] op1_frac, op2_frac;
+    logic[exp_width-1:0] op1_exp, op2_exp, op_sum_exp;
+    logic[frac_width-1:0] op1_frac, op2_frac, op_sum_frac;
 
     logic[mul_mant_width-1:0] mul_mant;
 

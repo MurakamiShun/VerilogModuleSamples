@@ -36,6 +36,13 @@ int main(int argc, char **argv) {
         {(fp_type)0x1.fb9e3ap+27, (fp_type)-0x1.bfcd04p+35},
         {(fp_type)0x1.5fb544p-16, (fp_type)-0x1.400c5p-10},
 
+        {(fp_type)0x1.2584dp-128, (fp_type)-0x1.44e534p-126}, //denormal
+        {(fp_type)-0x1.2f6e2p-128, (fp_type)0x1.f924p-131},
+        {(fp_type)-0x1.4f060ep-126, (fp_type)0x1.18fcd4p-127},
+        {(fp_type)-0x1.4f649p-128, (fp_type)0x1.59d6b4p-127},
+
+        {(fp_type)-0x1.d9aaaep+29, (fp_type)0x1.352018p+30}, // 2path
+
         {(fp_type)0.0, (fp_type)0.0},
         {(fp_type)0.0, (fp_type)-0.0},
         {(fp_type)-0.0, (fp_type)-0.0},
@@ -45,9 +52,10 @@ int main(int argc, char **argv) {
         {(fp_type)0x1.FFFFFEp0, (fp_type)0x1.000002p0},
         {(fp_type)0x1.FFFFFEp120, (fp_type)0x1.000000p7},
         {(fp_type)0x1.FFFFFEp120, (fp_type)0x1.000000p8}, // overflow
-        {(fp_type)0x1.FFFFFEp-70, (fp_type)-0x1.000000p-110},
+        {(fp_type)0x1.f99bacp+127, (fp_type)0x1.0c2ad4p+122},
+        {(fp_type)0x1.FFFFFEp-70, (fp_type)-0x1.000000p-110}, // under flow
         {(fp_type)0x1.FFFFFEp-63, (fp_type)0x1.000000p-63},
-        {(fp_type)0x1.FFFFFEp-63, (fp_type)0x1.000000p-64}, // under flow
+        {(fp_type)0x1.FFFFFEp-63, (fp_type)0x1.000000p-64},
         {std::numeric_limits<fp_type>::infinity(), (fp_type)0x1.FFFFFEp0}, // inf
         {std::numeric_limits<fp_type>::infinity(), std::numeric_limits<fp_type>::infinity()}, // inf
         {std::numeric_limits<fp_type>::infinity(), -std::numeric_limits<fp_type>::infinity()}, // inf
@@ -62,7 +70,7 @@ int main(int argc, char **argv) {
         {(fp_type)0.0, std::numeric_limits<fp_type>::infinity()}, // 0*inf
     };
     
-    for(int i = 0; i < 1000; ++i){
+    for(int i = 0; i < 1000000; ++i){
         test_data.push_back(
             {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())}
         );
