@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
 
     std::vector<uint32_t> test_data = {
         0x00,
-        0x80
+        uint32_t(~0)
     };
     for(int i = 0; i < 32; ++i){
         test_data.push_back(test_data.back() >> 1);
@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
     for(const auto i : test_data){
         lzc->Di = i;
         lzc->eval();
-        std::cout << (int)i << " : " << (uint16_t)lzc->Do << std::endl;
+        std::cout << i << " : " << (uint16_t)lzc->Do << std::endl;
     }
 
 

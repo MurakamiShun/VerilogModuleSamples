@@ -23,8 +23,8 @@ module FloatingPointRound#(
             `FP_ROUND_DOWNWARD:  round_up = (sign & |in_frac[2:0]);
             `FP_ROUND_UPWARD:    round_up = (~sign & |in_frac[2:0]);
         endcase
-        tmp_frac = {2'b01, in_frac[frac_width+2:3]} + {{(frac_width+1){1'b0}}, round_up};
-        out_frac = tmp_frac[frac_width+1] ? tmp_frac[frac_width:1] : tmp_frac[frac_width-1:0];
-        carry = tmp_frac[frac_width+1];
+        tmp_frac = {1'b1, in_frac[frac_width+2:3]} + {{(frac_width+1){1'b0}}, round_up};
+        out_frac = (&in_frac[frac_width+2:3] & round_up) ? tmp_frac[frac_width:1] : tmp_frac[frac_width-1:0];
+        carry = (&in_frac[frac_width+2:3] & round_up);
     end
 endmodule

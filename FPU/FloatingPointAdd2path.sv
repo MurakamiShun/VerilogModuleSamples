@@ -1,6 +1,6 @@
 `include "FloatingPointConsts.svh"
 
-module FloatingPointAdd#(
+module FloatingPointAdd2path#(
     parameter exp_width = 8,
     parameter frac_width = 23
 )(
@@ -19,6 +19,7 @@ module FloatingPointAdd#(
     logic op_big_sign, op_small_sign;
     logic[exp_width-1:0] op_big_exp, op_small_exp;
 
+    logic[frac_width+1:0] op1_manti, op2_manti;
     logic[frac_width+5:0] op_big_manti, op_small_manti;
 
     logic[frac_width+5:0] op_small_manti_shifted;
@@ -73,11 +74,16 @@ module FloatingPointAdd#(
         op_big_exp = op_big[exp_width+frac_width-1:frac_width];
         op_small_exp = op_small[exp_width+frac_width-1:frac_width];
 
-        op_big_manti = {2'b00, op_big_exp != {exp_width{1'b0}}, op_big[frac_width-1:0], 3'b000} << (op_big_exp == {exp_width{1'b0}});
-        op_small_manti = {2'b00, op_small_exp != {exp_width{1'b0}}, op_small[frac_width-1:0], 3'b000} << (op_small_exp == {exp_width{1'b0}});
+        op1_manti = (op1_exp == 0) ? {1'b0, op1[frac_width-1:0], 1'b0} : {2'b01, op1[frac_width-1:0]};
+        op2_manti = (op2_exp == 0) ? {1'b0, op2[frac_width-1:0], 1'b0} : {2'b01, op2[frac_width-1:0]};
 
-        if(exp_diff_abs == 0 || exp_diff_abs == 1)begin
-            op_small_manti_shifted = (exp_diff_abs == 0) ? op_small_manti : (op_small_manti >> 1);
+        op_big_manti = {1'b0, exp_diff[exp_width] ? op2_manti : op1_manti, 3'b000};
+        op_small_manti = {1'b0, exp_diff[exp_width] ? op1_manti : op2_manti, 3'b000};
+
+        if(exp_diff_abs == 0)begin
+            op_small_manti_shifted = op_small_manti;
+        end else if(exp_diff_abs == 1)begin
+            op_small_manti_shifted = op_small_manti >> 1;
         end else begin
             op_small_manti_shifted = (op_small_manti >> exp_diff_abs) | {{(frac_width+5){1'b0}}, |(op_small_manti & ~({(frac_width+6){1'b1}} << exp_diff_abs))};
         end
@@ -89,8 +95,8 @@ module FloatingPointAdd#(
             added_manti_abs_tmp = (added_manti[frac_width+5] ? -added_manti : added_manti); // absolute
             added_manti_abs = added_manti_abs_tmp[frac_width+4:0];
             norm_manti[shifter_stages] = added_manti_abs;
+            // normalize shift
             norm_manti_merge = norm_manti[0];
-
             norm_shift_ext = {{(exp_width-shifter_stages+1){1'b0}}, norm_shift};
         end else begin
             result_sign = op_big_sign;
@@ -129,37 +135,41 @@ module FloatingPointAdd#(
     );
 
     always_comb begin
-        result_exp = op_big_exp + {{(exp_width-1){1'b0}}, {1'b0, round_carry} + 1'b01} - norm_shift_ext;
+        result_exp = op_big_exp + 1 - norm_shift_ext + {{(exp_width){1'b0}}, round_carry};
         denormed_result = added_manti_abs << (op_big_exp + 1);
 
         is_underflow = result_exp[exp_width] | result_exp == 0;
         is_overflow = ~is_underflow & (&result_exp[exp_width-1:0]);
         is_inexact = |{norm_manti_merge[2:0]};
 
-        if(is_op1_nan) result = op1 | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
-        else if(is_op2_nan) result = op2  | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
-        else if(is_op1_inf & is_op2_inf & (op_big_sign^op_small_sign))begin
-            result = {{(exp_width+1){1'b1}}, 1'b1, {(frac_width-1){1'b0}}}; // -nan
-        end
-        else if(is_op1_inf | is_op2_inf) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
-        else if(is_overflow)begin
+        if(is_op1_nan | is_op2_nan)begin
+            result = (is_op1_nan ? op1 : op2) | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
+        end else if(is_op1_inf | is_op2_inf)begin
+            if(is_op1_inf & is_op2_inf & (op_big_sign^op_small_sign))begin
+                result = {{(exp_width+1){1'b1}}, 1'b1, {(frac_width-1){1'b0}}}; // -nan
+            end else begin
+                result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
+            end
+        end else if(~norm_manti_merge[frac_width+4]) begin // +-zero
+            unique case(round_mode)
+                `FP_ROUND_DOWNWARD: result = {op_big_sign | op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
+                default: result = {op_big_sign & op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
+            endcase
+        end else if(is_overflow | is_underflow)begin
+            if(is_underflow)begin
+                result = {result_sign, {exp_width{1'b0}}, round_carry ? denormed_result[frac_width+3:4] : denormed_result[frac_width+4:5]};
+            end else begin
             unique case(round_mode)
                 `FP_ROUND_TONEAREST:result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
                 `FP_ROUND_UPWARD:  result = result_sign ? {1'b1, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}} : {1'b0, {exp_width{1'b1}}, {frac_width{1'b0}}}; // -MAX or +inf
                 `FP_ROUND_DOWNWARD: result = result_sign ? {1'b1, {exp_width{1'b1}}, {frac_width{1'b0}}} : {1'b0, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}}; // -inf or +MAX
                 `FP_ROUND_TOWARDZERO: result = {result_sign, {(exp_width-1){1'b1}}, 1'b0, {frac_width{1'b1}}}; // +-MAX
             endcase
+            end
         end
-        else if(~|norm_manti_merge) begin // +-zero
-            unique case(round_mode)
-                `FP_ROUND_DOWNWARD: result = {op_big_sign | op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
-                default: result = {op_big_sign & op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
-            endcase
+        else begin
+            result = {result_sign, result_exp[exp_width-1:0], round_frac};
         end
-        else if(is_underflow)begin
-            result = {result_sign, {exp_width{1'b0}}, round_carry ? denormed_result[frac_width+3:4] : denormed_result[frac_width+4:5]};
-        end
-        else result = {result_sign, result_exp[exp_width-1:0], round_frac};
 
         exception = ({4'b0, is_overflow} << `FP_OVERFLOW) | ({4'b0, is_underflow} << `FP_UNDERFLOW) | ({4'b0, is_inexact} << `FP_INEXACT);
     end

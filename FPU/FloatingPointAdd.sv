@@ -110,30 +110,31 @@ module FloatingPointAdd#(
         is_overflow = ~is_underflow & (&result_exp[exp_width-1:0]);
         is_inexact = |{norm_manti[0][2:0]};
 
-        if(is_op1_nan) result = op1 | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
-        else if(is_op2_nan) result = op2  | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
-        else if(is_op1_inf & is_op2_inf & (op_big_sign^op_small_sign))begin
+        if(is_op1_nan)begin
+            result = op1 | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
+        end else if(is_op2_nan) begin
+            result = op2  | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
+        end else if(is_op1_inf & is_op2_inf & (op_big_sign^op_small_sign))begin
             result = {{(exp_width+1){1'b1}}, 1'b1, {(frac_width-1){1'b0}}}; // -nan
-        end
-        else if(is_op1_inf | is_op2_inf) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
-        else if(is_overflow)begin
+        end else if(is_op1_inf | is_op2_inf)begin
+            result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
+        end else if(~norm_manti[0][frac_width+4]) begin // +-zero
+            unique case(round_mode)
+                `FP_ROUND_DOWNWARD: result = {op_big_sign | op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
+                default: result = {op_big_sign & op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
+            endcase
+        end else if(is_overflow)begin
             unique case(round_mode)
                 `FP_ROUND_TONEAREST:result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
                 `FP_ROUND_UPWARD:  result = result_sign ? {1'b1, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}} : {1'b0, {exp_width{1'b1}}, {frac_width{1'b0}}}; // -MAX or +inf
                 `FP_ROUND_DOWNWARD: result = result_sign ? {1'b1, {exp_width{1'b1}}, {frac_width{1'b0}}} : {1'b0, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}}; // -inf or +MAX
                 `FP_ROUND_TOWARDZERO: result = {result_sign, {(exp_width-1){1'b1}}, 1'b0, {frac_width{1'b1}}}; // +-MAX
             endcase
-        end
-        else if(~|added_manti_abs) begin // +-zero
-            unique case(round_mode)
-                `FP_ROUND_DOWNWARD: result = {op_big_sign | op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
-                default: result = {op_big_sign & op_small_sign, {exp_width{1'b0}}, {frac_width{1'b0}}};
-            endcase
-        end
-        else if(is_underflow)begin
+        end else if(is_underflow)begin
             result = {result_sign, {exp_width{1'b0}}, {1'b1, round_frac[frac_width-1:1]} >> -result_exp};
+        end else begin
+            result = {result_sign, result_exp[exp_width-1:0], round_frac};
         end
-        else result = {result_sign, result_exp[exp_width-1:0], round_frac};
 
         exception = ({4'b0, is_overflow} << `FP_OVERFLOW) | ({4'b0, is_underflow} << `FP_UNDERFLOW) | ({4'b0, is_inexact} << `FP_INEXACT);
     end
