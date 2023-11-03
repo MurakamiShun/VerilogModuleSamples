@@ -71,7 +71,7 @@ module FloatingPointAdd2path#(
         op_big_sign = op_big[exp_width+frac_width];
         op_small_sign = op_small[exp_width+frac_width];
 
-        op_big_exp = op_big[exp_width+frac_width-1:frac_width];
+        op_big_exp = op_big[exp_width+frac_width-1:frac_width] + 1;
         op_small_exp = op_small[exp_width+frac_width-1:frac_width];
 
         op1_manti = (op1_exp == 0) ? {1'b0, op1[frac_width-1:0], 1'b0} : {2'b01, op1[frac_width-1:0]};
@@ -135,11 +135,11 @@ module FloatingPointAdd2path#(
     );
 
     always_comb begin
-        result_exp = op_big_exp + 1 - norm_shift_ext + {{(exp_width){1'b0}}, round_carry};
-        denormed_result = added_manti_abs << (op_big_exp + 1);
+        result_exp = op_big_exp - norm_shift_ext + {{(exp_width){1'b0}}, round_carry};
+        denormed_result = added_manti_abs << (op_big_exp);
 
         is_underflow = result_exp[exp_width] | result_exp == 0;
-        is_overflow = ~is_underflow & (&result_exp[exp_width-1:0]);
+        is_overflow = &result_exp[exp_width-1:0];
         is_inexact = |{norm_manti_merge[2:0]};
 
         if(is_op1_nan | is_op2_nan)begin
