@@ -30,9 +30,19 @@ int main(int argc, char **argv) {
         {(fp_type)1.0, (fp_type)1.111, (fp_type)1.3},
         {(fp_type)1.0, (fp_type)1.111, (fp_type)-1.3},
         {(fp_type)0x1.FFFFFEp0, (fp_type)0x1.FFFFFEp0, (fp_type)1.0e-120},
+
+
+        {(fp_type)-0x1.4740d6p+117, (fp_type)0x1.ea774ap+101, (fp_type)0x1.0ec73p+124}, // overflow
+
+
+        {(fp_type)0x1.952acp-128, (fp_type)-0x1.d818eap+0, (fp_type)0.0}, // subnormal
+        {(fp_type)0.0, (fp_type)0.0, (fp_type)0x1.952acp-130}, // subnormal
+        {(fp_type)0x1.952acp-126, (fp_type)1.0, (fp_type)0x1.0p-130}, // subnormal
+        {(fp_type)0x1.952acp-128, (fp_type)-0x1.d818eap+0, (fp_type)-0x1.0p-119}, // subnormal
+        {(fp_type)-0x1.473c7cp-106, (fp_type)-0x1.ba686ap-22, (fp_type)0x1.a0432p-128},
     };
 
-    for(int i = 0; i < 5; ++i){
+    for(int i = 0; i < 1000; ++i){
         test_data.push_back(
             {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())}
         );
@@ -42,7 +52,7 @@ int main(int argc, char **argv) {
     for(int i = 0; i < test_data.size(); ++i){
         fma_unit->op1 = std::bit_cast<fp_bit>(test_data[i][0]);
         fma_unit->op2 = std::bit_cast<fp_bit>(test_data[i][1]);
-        fma_unit->op_sum = std::bit_cast<fp_bit>(test_data[i][2]);
+        fma_unit->op_acc = std::bit_cast<fp_bit>(test_data[i][2]);
         fma_unit->round_mode = 0;
 
         fma_unit->eval();
@@ -65,7 +75,7 @@ int main(int argc, char **argv) {
     for(int i = 0; i < test_data.size(); ++i){
         fma_unit->op1 = std::bit_cast<fp_bit>(test_data[i][0]);
         fma_unit->op2 = std::bit_cast<fp_bit>(test_data[i][1]);
-        fma_unit->op_sum = std::bit_cast<fp_bit>(test_data[i][2]);
+        fma_unit->op_acc = std::bit_cast<fp_bit>(test_data[i][2]);
         fma_unit->round_mode = 1;
 
         fma_unit->eval();
@@ -87,7 +97,7 @@ int main(int argc, char **argv) {
     for(int i = 0; i < test_data.size(); ++i){
         fma_unit->op1 = std::bit_cast<fp_bit>(test_data[i][0]);
         fma_unit->op2 = std::bit_cast<fp_bit>(test_data[i][1]);
-        fma_unit->op_sum = std::bit_cast<fp_bit>(test_data[i][2]);
+        fma_unit->op_acc = std::bit_cast<fp_bit>(test_data[i][2]);
         fma_unit->round_mode = 2;
 
         fma_unit->eval();
@@ -109,7 +119,7 @@ int main(int argc, char **argv) {
     for(int i = 0; i < test_data.size(); ++i){
         fma_unit->op1 = std::bit_cast<fp_bit>(test_data[i][0]);
         fma_unit->op2 = std::bit_cast<fp_bit>(test_data[i][1]);
-        fma_unit->op_sum = std::bit_cast<fp_bit>(test_data[i][2]);
+        fma_unit->op_acc = std::bit_cast<fp_bit>(test_data[i][2]);
         fma_unit->round_mode = 3;
 
         fma_unit->eval();
