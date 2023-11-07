@@ -1,5 +1,5 @@
-read -sv ../FloatingPointAdd.sv ../FloatingPointRound.sv
-synth -top FloatingPointAdd
+read -sv ../FloatingPointAdd2path.sv ../FloatingPointRound.sv
+synth -top FloatingPointAdd2path
 proc; opt
 fsm; opt
 memory; opt

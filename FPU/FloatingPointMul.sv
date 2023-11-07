@@ -65,11 +65,24 @@ module FloatingPointMul#(
 
         op_frac_denorm[shifter_stages] = {1'b0, (op1_exp == {exp_width{1'b0}}) ? op1_frac : op2_frac};
     end
+    
     generate
         genvar s;
         for(s = shifter_stages-1; s >= 0; s = s - 1) begin: barrel_shifter
             assign denormal_shift_amount[s] = ~|op_frac_denorm[s+1][frac_width:frac_width-(2**s)+1];
             assign op_frac_denorm[s] = denormal_shift_amount[s] ? (op_frac_denorm[s+1] << 2**s) : op_frac_denorm[s+1];
+        end
+    endgenerate
+
+    localparam rshift_with_sticky_stages = $clog2(mul_mant_width+1);
+    logic[mul_mant_width-1:0] rshift_with_sticky_manti[rshift_with_sticky_stages:0];
+    logic[exp_width:0] rshift_with_sticky_amount;
+    generate
+        genvar t;
+        for(t = rshift_with_sticky_stages-1; t >= 0; t = t - 1) begin: rshift_with_sticky
+            assign rshift_with_sticky_manti[t] = (rshift_with_sticky_amount[t] || rshift_with_sticky_amount > mul_mant_width) ? 
+            ((rshift_with_sticky_manti[t+1] >> 2**t) | {{(mul_mant_width-1){1'b0}}, |rshift_with_sticky_manti[t+1][2**t-1:0]}):
+            rshift_with_sticky_manti[t+1];
         end
     endgenerate
 
@@ -83,10 +96,10 @@ module FloatingPointMul#(
                 mul_mant_denorm = mul_mant_denorm_tmp;
                 added_exp = op1_exp + op2_exp + {{(exp_width){1'b0}}, mul_mant_denorm[mul_mant_width-1]} - denormal_shift_amount + 1;
             end else begin // result is denormal
-                mul_mant_denorm = (
-                    (mul_mant >> (exp_bias + (frac_width - 3) - (op1_exp + op2_exp)))
-                    | {{(mul_mant_width-1){1'b0}},|(mul_mant & ~({mul_mant_width{1'b1}} << (exp_bias + (frac_width-3) - (op1_exp + op2_exp))))}
-                ) << (frac_width-3);
+                // mul_mant_denorm = right_shift_with_sticky(mul_mant, exp_bias + (frac_width - 3) - (op1_exp + op2_exp)) << (frac_width-3);
+                rshift_with_sticky_manti[rshift_with_sticky_stages] = mul_mant;
+                rshift_with_sticky_amount = exp_bias + (frac_width - 3) - (op1_exp + op2_exp);
+                mul_mant_denorm = rshift_with_sticky_manti[0] << (frac_width-3);
                 added_exp = 0;
             end
             unique case(mul_mant_denorm[mul_mant_width-1])
@@ -95,8 +108,10 @@ module FloatingPointMul#(
             endcase
         end else if((op1_exp + op2_exp + {{(exp_width){1'b0}}, mul_mant[mul_mant_width-1]}) <= exp_bias)begin // result is denormal
             added_exp = op1_exp + op2_exp;
-            mul_mant_denorm = (mul_mant >> (exp_bias - added_exp)
-            | {{(mul_mant_width-1){1'b0}},|(mul_mant & ~({mul_mant_width{1'b1}} << (exp_bias - added_exp)))});
+            // mul_mant_denorm = right_shift_with_sticky(mul_mant, exp_bias - added_exp);
+            rshift_with_sticky_manti[rshift_with_sticky_stages] = mul_mant;
+            rshift_with_sticky_amount = exp_bias - added_exp;
+            mul_mant_denorm = rshift_with_sticky_manti[0];
             norm_mul_frac = {mul_mant_denorm[mul_mant_width-2:mul_mant_width-frac_width-3], |mul_mant_denorm[mul_mant_width-frac_width-4:0]};
         end else begin
             added_exp = op1_exp + op2_exp + {{(exp_width){1'b0}}, mul_mant[mul_mant_width-1]};

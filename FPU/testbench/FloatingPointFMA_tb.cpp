@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
         {(fp_type)-0x1.473c7cp-106, (fp_type)-0x1.ba686ap-22, (fp_type)0x1.a0432p-128},
     };
 
-    for(int i = 0; i < 1000; ++i){
+    for(int i = 0; i < 1000000; ++i){
         test_data.push_back(
             {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())}
         );

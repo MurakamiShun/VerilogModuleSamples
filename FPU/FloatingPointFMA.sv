@@ -132,9 +132,18 @@ module FloatingPointFMA#(
     logic[frac_width+3:0] acc_norm_manti;
     logic[exp_width+1:0] norm_shift_ext;
 
+    function[frac_width+3:0] right_shift_with_sticky_subnormal(input logic[frac_width+3:0] a, input logic[exp_width+1:0]shift_amount);
+        right_shift_with_sticky_subnormal = (a >> shift_amount) | {{(frac_width+3){1'b0}}, |(a & ~({(frac_width+4){1'b1}} << shift_amount))};
+    endfunction
+
     always_comb begin
-        acc_norm_manti = {norm_manti[0][mul_mant_width:mul_mant_width-frac_width-2], |norm_manti[0][mul_mant_width-frac_width-3:0]};
         norm_shift_ext = {{(exp_width-shifter_stages+2){1'b0}}, norm_shift_amount};
+
+        if(acc_result_exp + 2 <= norm_shift_ext)begin
+            acc_norm_manti = right_shift_with_sticky_subnormal({norm_manti[0][mul_mant_width:mul_mant_width-frac_width-2], |norm_manti[0][mul_mant_width-frac_width-3:0]}, norm_shift_ext - acc_result_exp - 1);
+        end else begin
+            acc_norm_manti = {norm_manti[0][mul_mant_width:mul_mant_width-frac_width-2], |norm_manti[0][mul_mant_width-frac_width-3:0]};
+        end
     end
 
     /* verilator lint_off UNOPTFLAT */
@@ -171,7 +180,7 @@ module FloatingPointFMA#(
         else if(is_op1_inf | is_op2_inf | is_op_acc_inf) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
         else if(is_underflow)begin
             if(|round_frac)begin
-                result = {result_sign, {exp_width{1'b0}}, {1'b1, round_frac[frac_width-1:1]} >> (-result_exp)}; // denormal
+                result = {result_sign, {exp_width{1'b0}}, round_frac}; // denormal
             end else begin
                 result = {result_sign, {exp_width{1'b0}}, {frac_width{1'b0}}}; // +-zero
             end
