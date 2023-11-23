@@ -63,10 +63,6 @@ module FloatingPointFMA#(
     logic[exp_width:0] mul_result_exp_biased;
     logic[exp_width+1:0] mul_result_exp;
 
-    function[mul_mant_width-1:0] right_shift_with_sticky(input logic[mul_mant_width-1:0] a, input logic[exp_width+1:0]shift_amount);
-        right_shift_with_sticky = (a >> shift_amount) | {{(mul_mant_width-1){1'b0}}, |(a & ~({(mul_mant_width){1'b1}} << shift_amount))};
-    endfunction
-
     always_comb begin
         mul_result_sign = op1_sign ^ op2_sign;
         
@@ -83,18 +79,18 @@ module FloatingPointFMA#(
 
     logic[exp_width+1:0] exp_diff, exp_diff_abs_tmp;
     logic[exp_width:0] exp_diff_abs;
+    
+    
+    logic[mul_mant_width+1:0] mul_manti_ext, op_acc_manti_ext;
+    logic[mul_mant_width+1:0] big_manti, small_manti, acc_manti;
+    logic big_sign, small_sign;
 
-    logic[mul_mant_width+1:0] mul_manti_shifted, acc_manti_shifted, acc_manti;
     logic[exp_width+1:0] acc_result_exp;
 
     logic[mul_mant_width+1:0] acc_manti_abs_tmp;
     logic[mul_mant_width:0] acc_manti_abs;
 
     logic result_sign;
-
-    localparam shifter_stages = $clog2(mul_mant_width+2);
-    logic[mul_mant_width:0] norm_manti[shifter_stages:0];
-    logic[shifter_stages-1:0] norm_shift_amount;
 
     function[mul_mant_width+1:0] right_shift_with_sticky_acc(input logic[mul_mant_width+1:0] a, input logic[exp_width:0]shift_amount);
         right_shift_with_sticky_acc = (a >> shift_amount) | {{(mul_mant_width+1){1'b0}}, |(a & ~({(mul_mant_width+2){1'b1}} << shift_amount))};
@@ -105,45 +101,43 @@ module FloatingPointFMA#(
         exp_diff = {2'b00, op_acc_exp} - mul_result_exp;
         exp_diff_abs_tmp = exp_diff[exp_width+1] ? -exp_diff : exp_diff;
         exp_diff_abs = exp_diff_abs_tmp[exp_width:0];
+
+        mul_manti_ext = {2'b00, mul_manti};
+        op_acc_manti_ext = {3'b000, op_acc_manti, {(mul_mant_width-frac_width-2){1'b0}}};
         
-        if(exp_diff[exp_width+1])begin // op_acc_exp <= mul_result_exp
-            mul_manti_shifted = {2'b00, mul_manti};
-            acc_manti_shifted = right_shift_with_sticky_acc({3'b000, op_acc_manti, {(mul_mant_width-frac_width-2){1'b0}}}, exp_diff_abs);
-            acc_result_exp = mul_result_exp;
-        end else begin                // op_acc_exp > mul_result_exp
-            mul_manti_shifted = right_shift_with_sticky_acc({2'b00, mul_manti}, exp_diff_abs);
-            acc_manti_shifted = {3'b000, op_acc_manti, {(mul_mant_width-frac_width-2){1'b0}}};
-            acc_result_exp = {2'b00, op_acc_exp};
-        end
-        acc_manti = (mul_result_sign ? -mul_manti_shifted : mul_manti_shifted) + (op_acc_sign ? -acc_manti_shifted : acc_manti_shifted);
+        big_manti = exp_diff[exp_width+1] ? mul_manti_ext : op_acc_manti_ext;
+        small_manti = right_shift_with_sticky_acc(exp_diff[exp_width+1] ? op_acc_manti_ext : mul_manti_ext, exp_diff_abs);
+        big_sign = exp_diff[exp_width+1] ? mul_result_sign : op_acc_sign;
+        small_sign = exp_diff[exp_width+1] ? op_acc_sign : mul_result_sign;
+        acc_result_exp = exp_diff[exp_width+1] ? mul_result_exp : {2'b00, op_acc_exp};
 
-        result_sign = acc_manti[mul_mant_width+1];
-        acc_manti_abs_tmp = result_sign ? -acc_manti : acc_manti;
+        acc_manti = big_manti + (mul_result_sign ^ op_acc_sign ? -small_manti : small_manti);
+
+        result_sign = big_sign ^ acc_manti[mul_mant_width+1];
+        acc_manti_abs_tmp = acc_manti[mul_mant_width+1] ? -acc_manti : acc_manti;
         acc_manti_abs = acc_manti_abs_tmp[mul_mant_width:0];
-
-        norm_manti[shifter_stages] = acc_manti_abs;
     end
 
-    for(genvar s = shifter_stages-1; s >= 0; s = s - 1) begin: barrel_shifter
-        assign norm_shift_amount[s] = ~|norm_manti[s+1][mul_mant_width:mul_mant_width+1-(2**s)];
-        assign norm_manti[s] = norm_shift_amount[s] ? (norm_manti[s+1] << 2**s) : norm_manti[s+1];
-    end
+    localparam lzc_bits = $clog2(2**$clog2(mul_mant_width+1)+1);
+    logic[lzc_bits-1:0] norm_shift_amount;
+
+    LeadingZerosCounter#(
+        .in_width(mul_mant_width+1)
+    )lzc(
+        .Di(acc_manti_abs),
+        .Do(norm_shift_amount)
+    );
 
     logic[frac_width+3:0] acc_norm_manti;
     logic[exp_width+1:0] norm_shift_ext;
 
-    function[frac_width+3:0] right_shift_with_sticky_subnormal(input logic[frac_width+3:0] a, input logic[exp_width+1:0]shift_amount);
-        right_shift_with_sticky_subnormal = (a >> shift_amount) | {{(frac_width+3){1'b0}}, |(a & ~({(frac_width+4){1'b1}} << shift_amount))};
-    endfunction
+    logic[mul_mant_width:0] norm_manti;
 
     always_comb begin
-        norm_shift_ext = {{(exp_width-shifter_stages+2){1'b0}}, norm_shift_amount};
+        norm_shift_ext = {{(exp_width-lzc_bits+2){1'b0}}, norm_shift_amount};
+        norm_manti = acc_manti_abs << (acc_result_exp + 2 <= norm_shift_ext ? (acc_result_exp + 1) : norm_shift_ext);
 
-        if(acc_result_exp + 2 <= norm_shift_ext)begin
-            acc_norm_manti = right_shift_with_sticky_subnormal({norm_manti[0][mul_mant_width:mul_mant_width-frac_width-2], |norm_manti[0][mul_mant_width-frac_width-3:0]}, norm_shift_ext - acc_result_exp - 1);
-        end else begin
-            acc_norm_manti = {norm_manti[0][mul_mant_width:mul_mant_width-frac_width-2], |norm_manti[0][mul_mant_width-frac_width-3:0]};
-        end
+        acc_norm_manti = {norm_manti[mul_mant_width:mul_mant_width-frac_width-2], |norm_manti[mul_mant_width-frac_width-3:0]};
     end
 
     /* verilator lint_off UNOPTFLAT */
@@ -166,7 +160,7 @@ module FloatingPointFMA#(
     logic is_overflow, is_underflow, is_inexact;
 
     always_comb begin
-        result_exp = acc_result_exp - norm_shift_ext + 2 + {{(exp_width+1){1'b0}}, round_carry};
+        result_exp = acc_result_exp + 2 - norm_shift_ext + {{(exp_width+1){1'b0}}, round_carry};
         
         is_overflow = result_exp > (exp_bias*2);
         is_underflow = result_exp == 0 || result_exp[exp_width+1];
@@ -176,7 +170,6 @@ module FloatingPointFMA#(
         else if(is_op1_nan) result = op1 | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
         else if(is_op2_nan) result = op2 | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
         else if(is_op1_inf & is_op2_zero | is_op1_zero & is_op2_inf) result = {1'b1, {exp_width{1'b1}}, 1'b1, {(frac_width-1){1'b0}}}; // -nan
-        else if((is_op1_zero | is_op2_zero) & is_op_acc_zero) result = {result_sign, {exp_width{1'b0}}, {frac_width{1'b0}}}; // +-zero
         else if(is_op1_inf | is_op2_inf | is_op_acc_inf) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
         else if(is_underflow)begin
             if(|round_frac)begin

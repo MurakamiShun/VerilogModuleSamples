@@ -20,12 +20,12 @@ module FloatingPointMul#(
 
     logic[mul_mant_width-1:0] mul_mant;
 
-    localparam shifter_stages = $clog2(frac_width+2);
+    localparam lzc_shifter_stages = $clog2(frac_width+2);
 
     logic[mul_mant_width-1:0] mul_mant_denorm_tmp;
     logic[mul_mant_width-1:0] mul_mant_denorm;
     /* verilator lint_off UNOPTFLAT */
-    logic[frac_width:0] op_frac_denorm[shifter_stages:0];
+    logic[frac_width:0] op_frac_denorm[lzc_shifter_stages:0];
     logic[exp_width:0] denormal_shift_amount;
 
     logic[frac_width+2:0] norm_mul_frac;
@@ -63,12 +63,12 @@ module FloatingPointMul#(
 
         result_sign = op1_sign ^ op2_sign;
 
-        op_frac_denorm[shifter_stages] = {1'b0, (op1_exp == {exp_width{1'b0}}) ? op1_frac : op2_frac};
+        op_frac_denorm[lzc_shifter_stages] = {1'b0, (op1_exp == {exp_width{1'b0}}) ? op1_frac : op2_frac};
     end
     
     generate
         genvar s;
-        for(s = shifter_stages-1; s >= 0; s = s - 1) begin: barrel_shifter
+        for(s = lzc_shifter_stages-1; s >= 0; s = s - 1) begin: leading_zeros
             assign denormal_shift_amount[s] = ~|op_frac_denorm[s+1][frac_width:frac_width-(2**s)+1];
             assign op_frac_denorm[s] = denormal_shift_amount[s] ? (op_frac_denorm[s+1] << 2**s) : op_frac_denorm[s+1];
         end
@@ -88,7 +88,7 @@ module FloatingPointMul#(
 
     always_comb begin
         mul_mant = ({op1_exp != {exp_width{1'b0}}, op1_frac} * {op2_exp != {exp_width{1'b0}}, op2_frac});
-        denormal_shift_amount[exp_width:shifter_stages] = {(exp_width-shifter_stages+1){1'b0}};
+        denormal_shift_amount[exp_width:lzc_shifter_stages] = {(exp_width-lzc_shifter_stages+1){1'b0}};
 
         if((op1_exp == {exp_width{1'b0}}) ^ (op2_exp == {exp_width{1'b0}}))begin // an input is denormal
             mul_mant_denorm_tmp = mul_mant << (denormal_shift_amount);
@@ -142,11 +142,15 @@ module FloatingPointMul#(
         
         result_exp = result_biased_exp - exp_bias;
 
-        if(is_op1_nan) result = op1  | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
-        else if(is_op2_nan) result = op2  | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
-        else if(is_op1_inf & is_op2_zero | is_op1_zero & is_op2_inf) result = {1'b1, {exp_width{1'b1}}, 1'b1, {(frac_width-1){1'b0}}}; // -nan
-        else if(is_op1_zero | is_op2_zero) result = {result_sign, {exp_width{1'b0}}, {frac_width{1'b0}}}; // +-zero
-        else if(is_op1_inf | is_op2_inf) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
+        if(is_op1_nan | is_op2_nan)begin
+            result = (is_op1_nan ? op1 : op2) | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
+        end else if(is_op1_inf | is_op2_inf)begin
+            if(is_op1_inf & is_op2_zero | is_op1_zero & is_op2_inf)begin
+                result = {1'b1, {exp_width{1'b1}}, 1'b1, {(frac_width-1){1'b0}}}; // -nan
+            end else begin
+                result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
+            end
+        end
         else if(is_underflow)begin
             if(|round_frac)begin
                 result = {result_sign, {exp_width{1'b0}}, round_frac}; // denormal
