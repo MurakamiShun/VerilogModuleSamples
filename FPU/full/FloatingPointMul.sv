@@ -80,8 +80,8 @@ module FloatingPointMul#(
     generate
         genvar t;
         for(t = rshift_with_sticky_stages-1; t >= 0; t = t - 1) begin: rshift_with_sticky
-            assign rshift_with_sticky_manti[t] = (rshift_with_sticky_amount[t] || rshift_with_sticky_amount > mul_mant_width) ? 
-            ((rshift_with_sticky_manti[t+1] >> 2**t) | {{(mul_mant_width-1){1'b0}}, |rshift_with_sticky_manti[t+1][2**t-1:0]}):
+            assign rshift_with_sticky_manti[t] = (rshift_with_sticky_amount[t] || rshift_with_sticky_amount > mul_mant_width) ?
+            {rshift_with_sticky_manti[t+1][mul_mant_width-1:1] >> 2**t, |rshift_with_sticky_manti[t+1][2**t-1:0]}:
             rshift_with_sticky_manti[t+1];
         end
     endgenerate

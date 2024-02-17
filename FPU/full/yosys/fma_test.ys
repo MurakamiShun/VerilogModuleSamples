@@ -1,0 +1,7 @@
+read -sv ../FloatingPointFMA.sv ../FloatingPointRound.sv ../LeadingZerosCounter.sv
+synth -top FloatingPointFMA
+proc; opt
+techmap; opt
+dfflibmap -liberty osu018_stdcells.lib
+abc -D 10000 -liberty osu018_stdcells.lib
+stat -liberty osu018_stdcells.lib

@@ -24,7 +24,4 @@ int main(int argc, char **argv) {
         lzc->eval();
         std::cout << i << " : " << (uint16_t)lzc->Do << std::endl;
     }
-
-
-
 }

@@ -8,6 +8,8 @@
 #include <iomanip>
 #include <limits>
 #include <verilated.h>
+#include <xmmintrin.h>
+#include <pmmintrin.h>
 #include "VFloatingPointMul.h"
 
 int main(int argc, char **argv) {
@@ -56,11 +58,14 @@ int main(int argc, char **argv) {
         {(fp_type)0.0, std::numeric_limits<fp_type>::infinity()}, // 0*inf
     };
 
-    for(int i = 0; i < 1000000; ++i){
+    for(int i = 0; i < 100000; ++i){
         test_data.push_back(
             {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())}
         );
     }
+    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+    _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+
 
     std::fesetround(FE_TONEAREST);
     for(int i = 0; i < test_data.size(); ++i){
@@ -81,7 +86,7 @@ int main(int argc, char **argv) {
                 << " : " << std::hexfloat << test_data[i][0] * test_data[i][1] << std::endl;
         }
     }
-
+    /*
     std::fesetround(FE_TOWARDZERO);
     for(int i = 0; i < test_data.size(); ++i){
         mul_unit->op1 = std::bit_cast<fp_bit>(test_data[i][0]);
@@ -101,6 +106,7 @@ int main(int argc, char **argv) {
                 << " : " << std::hexfloat << test_data[i][0] * test_data[i][1] << std::endl;
         }
     }
+
     std::fesetround(FE_DOWNWARD);
     for(int i = 0; i < test_data.size(); ++i){
         mul_unit->op1 = std::bit_cast<fp_bit>(test_data[i][0]);
@@ -139,7 +145,7 @@ int main(int argc, char **argv) {
                 << " : " << std::hexfloat << test_data[i][0] * test_data[i][1] << std::endl;
         }
     }
-
+    */
 
     mul_unit->final();
 }

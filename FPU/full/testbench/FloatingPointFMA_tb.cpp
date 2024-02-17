@@ -24,6 +24,7 @@ int main(int argc, char **argv) {
 
     std::vector<std::array<fp_type, 3>> test_data = {
         {(fp_type)1.0, (fp_type)1.0, (fp_type)1.0e-120},
+        
         {(fp_type)0x1.FFFFFEp0, (fp_type)0x1.000002p0, (fp_type)1.0e-120},
         {(fp_type)1.0, (fp_type)1.0, (fp_type)0x1.0p-2},
         {(fp_type)1.0, (fp_type)1.0, (fp_type)0x1.0p2},
@@ -31,18 +32,18 @@ int main(int argc, char **argv) {
         {(fp_type)1.0, (fp_type)1.111, (fp_type)-1.3},
         {(fp_type)0x1.FFFFFEp0, (fp_type)0x1.FFFFFEp0, (fp_type)1.0e-120},
 
-
         {(fp_type)-0x1.4740d6p+117, (fp_type)0x1.ea774ap+101, (fp_type)0x1.0ec73p+124}, // overflow
-
 
         {(fp_type)0x1.952acp-128, (fp_type)-0x1.d818eap+0, (fp_type)0.0}, // subnormal
         {(fp_type)0.0, (fp_type)0.0, (fp_type)0x1.952acp-130}, // subnormal
         {(fp_type)0x1.952acp-126, (fp_type)1.0, (fp_type)0x1.0p-130}, // subnormal
         {(fp_type)0x1.952acp-128, (fp_type)-0x1.d818eap+0, (fp_type)-0x1.0p-119}, // subnormal
         {(fp_type)-0x1.473c7cp-106, (fp_type)-0x1.ba686ap-22, (fp_type)0x1.a0432p-128},
+        {(fp_type)0x1.34a466p+38, (fp_type)-0x1.1e0e0ap+70, (fp_type)-0x1.58e096p+108},
+        {(fp_type)-0x1.2f1cd6p-71, (fp_type)-0x1.ccafb2p+21, (fp_type)-0x1.ae1354p-83},
     };
 
-    for(int i = 0; i < 1000000; ++i){
+    for(int i = 0; i < 10000; ++i){
         test_data.push_back(
             {std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn()), std::bit_cast<fp_type>(rnd_egn())}
         );

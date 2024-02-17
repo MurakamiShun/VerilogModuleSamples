@@ -48,19 +48,11 @@ module FloatingPointFMA#(
     end
 
     localparam mul_mant_width = (frac_width+1)*2;
-    localparam op_lcz_stages = $clog2(frac_width+1);
     
     logic[frac_width:0] op1_manti, op2_manti;
-    /* verilator lint_off UNOPTFLAT */
-    logic[frac_width:0] lzc_tmps[op_lcz_stages:0];
-    logic[exp_width:0] op_leading_zeros; // leading zeros count
 
-    logic[mul_mant_width-1:0] mul_manti, norm_mul_manti;
-    logic[mul_mant_width-1:0] mul_manti_norm_tmp, mul_manti_denorm;
-    logic mul_carry;
-
+    logic[mul_mant_width-1:0] mul_manti;
     logic mul_result_sign;
-    logic[exp_width:0] mul_result_exp_biased;
     logic[exp_width+1:0] mul_result_exp;
 
     always_comb begin
@@ -71,19 +63,18 @@ module FloatingPointFMA#(
 
         mul_manti = op1_manti * op2_manti;
 
-        mul_result_exp_biased = {1'b0, op1_exp} + {1'b0, op2_exp};
-        mul_result_exp = {1'b0, mul_result_exp_biased} - exp_bias;
+        mul_result_exp = {1'b0, {1'b0, op1_exp} + {1'b0, op2_exp}} - exp_bias;
     end
 
     logic[frac_width:0] op_acc_manti;
 
-    logic[exp_width+1:0] exp_diff, exp_diff_abs_tmp;
+    logic[exp_width+1:0] exp_diff_abs_tmp;
     logic[exp_width:0] exp_diff_abs;
     
     
     logic[mul_mant_width+1:0] mul_manti_ext, op_acc_manti_ext;
     logic[mul_mant_width+1:0] big_manti, small_manti, acc_manti;
-    logic big_sign, small_sign;
+    logic big_sign;
 
     logic[exp_width+1:0] acc_result_exp;
 
@@ -91,30 +82,40 @@ module FloatingPointFMA#(
     logic[mul_mant_width:0] acc_manti_abs;
 
     logic result_sign;
+    logic is_mul_exp_big;
 
-    function[mul_mant_width+1:0] right_shift_with_sticky_acc(input logic[mul_mant_width+1:0] a, input logic[exp_width:0]shift_amount);
-        right_shift_with_sticky_acc = (a >> shift_amount) | {{(mul_mant_width+1){1'b0}}, |(a & ~({(mul_mant_width+2){1'b1}} << shift_amount))};
-    endfunction
+    localparam shifter_stages = $clog2(mul_mant_width+2);
+    /* verilator lint_off UNOPTFLAT */
+    logic[mul_mant_width+1:0] right_shift_with_sticky_acc[shifter_stages:0];
+    logic[exp_width:0] shift_amount;
+    generate
+        genvar i;
+        for(i = 0; i < shifter_stages; i = i+1)begin
+            assign right_shift_with_sticky_acc[i] = !shift_amount[i] ? right_shift_with_sticky_acc[i+1]:
+                   {right_shift_with_sticky_acc[i+1][mul_mant_width+1:1] >> (2**i), |right_shift_with_sticky_acc[i+1][2**i:0]};
+        end
+    endgenerate
 
     always_comb begin
         op_acc_manti = (op_acc_exp == 0) ? {op_acc_frac, 1'b0} : {1'b1, op_acc_frac};
-        exp_diff = {2'b00, op_acc_exp} - mul_result_exp;
-        exp_diff_abs_tmp = exp_diff[exp_width+1] ? -exp_diff : exp_diff;
-        exp_diff_abs = exp_diff_abs_tmp[exp_width:0];
-
         mul_manti_ext = {2'b00, mul_manti};
         op_acc_manti_ext = {3'b000, op_acc_manti, {(mul_mant_width-frac_width-2){1'b0}}};
-        
-        big_manti = exp_diff[exp_width+1] ? mul_manti_ext : op_acc_manti_ext;
-        small_manti = right_shift_with_sticky_acc(exp_diff[exp_width+1] ? op_acc_manti_ext : mul_manti_ext, exp_diff_abs);
-        big_sign = exp_diff[exp_width+1] ? mul_result_sign : op_acc_sign;
-        small_sign = exp_diff[exp_width+1] ? op_acc_sign : mul_result_sign;
-        acc_result_exp = exp_diff[exp_width+1] ? mul_result_exp : {2'b00, op_acc_exp};
+
+        is_mul_exp_big = $signed({2'b00, op_acc_exp}) < $signed(mul_result_exp);
+        exp_diff_abs_tmp = is_mul_exp_big ? (mul_result_exp - {2'b00, op_acc_exp}) : ({2'b00, op_acc_exp} - mul_result_exp);
+        exp_diff_abs = exp_diff_abs_tmp[exp_width:0];
+
+        big_manti = is_mul_exp_big ? mul_manti_ext : op_acc_manti_ext;
+        right_shift_with_sticky_acc[shifter_stages] = is_mul_exp_big ? op_acc_manti_ext : mul_manti_ext;
+        shift_amount = exp_diff_abs;
+        small_manti = |shift_amount[exp_width:shifter_stages-1] ? {{(mul_mant_width+1){1'b0}}, |right_shift_with_sticky_acc[shifter_stages]} : right_shift_with_sticky_acc[0];
+        big_sign = is_mul_exp_big ? mul_result_sign : op_acc_sign;
+        acc_result_exp = is_mul_exp_big ? mul_result_exp : {2'b00, op_acc_exp};
 
         acc_manti = big_manti + (mul_result_sign ^ op_acc_sign ? -small_manti : small_manti);
 
-        result_sign = big_sign ^ acc_manti[mul_mant_width+1];
-        acc_manti_abs_tmp = acc_manti[mul_mant_width+1] ? -acc_manti : acc_manti;
+        result_sign = big_sign ^ ($signed(acc_manti) < 0);
+        acc_manti_abs_tmp = ($signed(acc_manti) < 0) ? -acc_manti : acc_manti;
         acc_manti_abs = acc_manti_abs_tmp[mul_mant_width:0];
     end
 
@@ -135,8 +136,8 @@ module FloatingPointFMA#(
 
     always_comb begin
         norm_shift_ext = {{(exp_width-lzc_bits+2){1'b0}}, norm_shift_amount};
-        norm_manti = acc_manti_abs << (acc_result_exp + 2 <= norm_shift_ext ? (acc_result_exp + 1) : norm_shift_ext);
 
+        norm_manti = acc_manti_abs << ((acc_result_exp + 2 <= norm_shift_ext) ? (acc_result_exp + 1):norm_shift_ext);
         acc_norm_manti = {norm_manti[mul_mant_width:mul_mant_width-frac_width-2], |norm_manti[mul_mant_width-frac_width-3:0]};
     end
 
@@ -162,13 +163,12 @@ module FloatingPointFMA#(
     always_comb begin
         result_exp = acc_result_exp + 2 - norm_shift_ext + {{(exp_width+1){1'b0}}, round_carry};
         
-        is_overflow = result_exp > (exp_bias*2);
-        is_underflow = result_exp == 0 || result_exp[exp_width+1];
+        is_overflow = result_exp[exp_width] | &result_exp[exp_width-1:0];
+        is_underflow = !(|acc_norm_manti[frac_width+3:frac_width+2]) & !round_carry;
         is_inexact = |acc_norm_manti[2:0];
 
         if(is_op_acc_nan) result = op_acc | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
-        else if(is_op1_nan) result = op1 | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
-        else if(is_op2_nan) result = op2 | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
+        else if(is_op1_nan | is_op2_nan) result = (is_op1_nan ? op1 : op2) | {{(exp_width+1){1'b0}}, 1'b1, {(frac_width-1){1'b0}}}; // quietNaN propagation
         else if(is_op1_inf & is_op2_zero | is_op1_zero & is_op2_inf) result = {1'b1, {exp_width{1'b1}}, 1'b1, {(frac_width-1){1'b0}}}; // -nan
         else if(is_op1_inf | is_op2_inf | is_op_acc_inf) result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
         else if(is_underflow)begin
@@ -181,8 +181,8 @@ module FloatingPointFMA#(
         else if(is_overflow) begin
             unique case(round_mode)
                 `FP_ROUND_TOWARDZERO : result = {result_sign, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}}; // +-MAX
-                `FP_ROUND_UPWARD: result = result_sign ? {result_sign, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}} : {1'b0, {exp_width{1'b1}}, {frac_width{1'b0}}}; // -MAX or +inf
-                `FP_ROUND_DOWNWARD: result = result_sign ? {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}} : {result_sign, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}}; // -inf or +MAX
+                `FP_ROUND_UPWARD: result = result_sign ? {1'b1, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}} : {1'b0, {exp_width{1'b1}}, {frac_width{1'b0}}}; // -MAX or +inf
+                `FP_ROUND_DOWNWARD: result = result_sign ? {1'b1, {exp_width{1'b1}}, {frac_width{1'b0}}} : {1'b0, {(exp_width-1){1'b1}}, 1'b0, {(frac_width){1'b1}}}; // -inf or +MAX
                 `FP_ROUND_TONEAREST: result = {result_sign, {exp_width{1'b1}}, {frac_width{1'b0}}}; // +-inf
             endcase
         end
