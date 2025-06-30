@@ -1,5 +1,5 @@
 module simpleUART#(
-    parameter CLK_FREQ = 27_000_000,
+    parameter CLK_FREQ = 50_000_000,
     parameter baudrate = 115_200,
     parameter FIFO_ADDR_WIDTH = 3
 )(
@@ -77,22 +77,23 @@ simpleUART_FIFO#(
 
 always@(posedge CLK)begin
     // TX
-    if(tx_stat == TX_WAIT_STAT && ~tx_fifo_empty && tx_baudrate_clk_cnt == 0)begin
+    if(RST)begin
+        tx_fifo_rd_en <= 0;
+        tx_stat <= TX_WAIT_STAT;
+        tx_reg <= 1;
+        tx_shft <= 0;
+    end else if(tx_stat == TX_WAIT_STAT && ~tx_fifo_empty && tx_baudrate_clk_cnt == 0)begin
         tx_data <= tx_fifo_data;
         tx_fifo_rd_en <= 1;
         tx_stat <= TX_START_BIT_STAT;
-    end else if(tx_stat == TX_START_BIT_STAT) begin
-        if(tx_baudrate_clk_cnt == 0)begin
-            tx_stat <= TX_DATA_STAT;
-            tx_reg <= 0;
-            tx_shft <= 0;
-            tx_reg <= 0;
-        end
-        tx_fifo_rd_en <= 0;
+    end else if(tx_stat == TX_START_BIT_STAT && tx_baudrate_clk_cnt == 0) begin
+        tx_stat <= TX_DATA_STAT;
+        tx_reg <= 0;
+        tx_shft <= 0;
     end else if(tx_stat == TX_DATA_STAT && tx_baudrate_clk_cnt == 0)begin
         tx_stat <= TX_DATA_STAT;
         tx_reg <= tx_data[0];
-        tx_data <= {1'b0, tx_data[7:1]};
+        tx_data <= {1'b1, tx_data[7:1]};
         tx_shft <= tx_shft+1'b1;
         if(tx_shft == 3'd7)begin
             tx_stat <= TX_STOP_BIT_STAT;
@@ -100,39 +101,52 @@ always@(posedge CLK)begin
     end else if(tx_stat == TX_STOP_BIT_STAT && tx_baudrate_clk_cnt == 0)begin
         tx_stat <= TX_WAIT_STAT;
         tx_reg <= 1;
+    end else begin
+        tx_fifo_rd_en <= 0;
     end
 
-    if(tx_baudrate_clk_cnt == baudrate_rst_cnt)begin
+    if(RST)begin
+        tx_baudrate_clk_cnt <= 0;
+    end else if(tx_baudrate_clk_cnt >= baudrate_rst_cnt)begin
         tx_baudrate_clk_cnt <= 0;
     end else begin
-        tx_baudrate_clk_cnt <= tx_baudrate_clk_cnt+1'b1;
+        tx_baudrate_clk_cnt <= tx_baudrate_clk_cnt+1;
     end
 
     // RX
-    rx_buffer <= RX;
+    rx_buffer <= RST ? 1 : RX;
+    rx_reg <= RST ? 1 : rx_buffer;
 
-    if(rx_stat == RX_WAIT_STAT)begin
+    if(RST)begin
+        rx_fifo_wr_en <= 0;
+        rx_stat <= RX_WAIT_STAT;
+        rx_shft <= 0;
+    end else if(rx_stat == RX_WAIT_STAT)begin
         rx_fifo_wr_en <= 0;
         if(~rx_fifo_full && rx_reg == 1 && rx_buffer == 0)begin
             rx_stat <= RX_START_BIT_STAT;
         end
     end else if(rx_stat == RX_START_BIT_STAT && rx_baudrate_clk_cnt == baudrate_rst_cnt/2) begin
+        rx_fifo_wr_en <= 0;
         rx_stat <= RX_DATA_STAT;
         rx_shft <= 0;
     end else if(rx_stat == RX_DATA_STAT && rx_baudrate_clk_cnt == baudrate_rst_cnt/2)begin
         rx_data <= {rx_reg, rx_data[7:1]};
-        rx_shft <= rx_shft + 1'b1;
+        rx_shft <= rx_shft + 1;
         if(rx_shft == 3'd7)begin
             rx_fifo_wr_en <= 1;
             rx_stat <= RX_WAIT_STAT;
+        end else begin
+            rx_fifo_wr_en <= 0;
         end
     end
 
-    rx_reg <= rx_buffer;
-    if(rx_reg != rx_buffer || rx_baudrate_clk_cnt == baudrate_rst_cnt)begin
+    if(RST)begin
+        rx_baudrate_clk_cnt <= 0;
+    end else if(rx_reg != rx_buffer || rx_baudrate_clk_cnt >= baudrate_rst_cnt)begin
         rx_baudrate_clk_cnt <= 0;
     end else begin
-        rx_baudrate_clk_cnt <= rx_baudrate_clk_cnt+1'b1;
+        rx_baudrate_clk_cnt <= rx_baudrate_clk_cnt+1;
     end
 end
 endmodule
