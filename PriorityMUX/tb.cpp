@@ -5,19 +5,20 @@
 #include <iomanip>
 #include <verilated.h>
 #include "VPriorityMUX.h"
+#include "VPriorityMUX___024root.h"
 
 int main(int argc, char **argv) {
     Verilated::commandArgs(argc, argv);
 
     // Instance
     auto mux = std::make_unique<VPriorityMUX>();
-    constexpr auto N = 19;
+    constexpr auto N = 32;
 
     for(int i = 0; i < N; ++i){
         mux->i_data[i] = i;
     }
 
-    std::array<uint32_t, 8> test_sel = {
+    std::array<uint64_t, 8> test_sel = {
         0b000000001,
         0b000000011,
         0b000000101,
