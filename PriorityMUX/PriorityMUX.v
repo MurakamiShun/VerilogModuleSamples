@@ -2,7 +2,7 @@
 
 // Optimized to FPGA(LUT6 architecture)
 module PriorityMUX#(
-    parameter INPUTS = 32,
+    parameter INPUTS = 19,
     parameter WIDTH = 32
 )(
     input wire[INPUTS-1:0] sel,
@@ -12,12 +12,23 @@ module PriorityMUX#(
 );
 
 function automatic integer clog3(input integer jj);
+    // integer i;
+    // integer k = 1;
+    // for(i = jj; i > 3; i = (i+2)/ 3)begin
+    //     k = k + 1;
+    // end
+    // return k;
     integer i;
-    integer k = 1;
-    for(i = jj; i > 3; i = (i+2)/ 3)begin
-        k = k + 1;
+    integer k;
+    i = jj;
+    for(k = 0; k < $clog2(jj); k=k+1)begin
+        if(i == 1)begin
+            i = k;
+            break;
+        end
+        i = (i+2)/ 3;
     end
-    return k;
+    return i;
 endfunction
 
 function automatic integer total_buff(input integer jj);

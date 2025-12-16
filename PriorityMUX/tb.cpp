@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
 
     // Instance
     auto mux = std::make_unique<VPriorityMUX>();
-    constexpr auto N = 32;
+    constexpr auto N = 19;
 
     for(int i = 0; i < N; ++i){
         mux->i_data[i] = i;
