@@ -5,7 +5,6 @@
 #include <iomanip>
 #include <verilated.h>
 #include "VPriorityMUX.h"
-#include "VPriorityMUX___024root.h"
 
 int main(int argc, char **argv) {
     Verilated::commandArgs(argc, argv);
